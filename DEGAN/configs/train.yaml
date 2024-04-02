@@ -1,0 +1,50 @@
+name: "train"
+n_gpu: 1
+
+batch_size: 32
+
+optimizer_encoder:
+  _target_: torch.optim.AdamW
+  lr: 0.0001
+  weight_decay: 0.0001
+
+lr_scheduler_encoder:
+  _target_: torch.optim.lr_scheduler.ExponentialLR
+  gamma: 1
+
+generator:
+  _target_: DEGAN.model.Generator
+  size: 1024
+  style_dim: 512
+  n_mlp: 4
+
+encoder:
+  _target_: DEGAN.model.DomainEncoder
+
+metrics:
+  - _target_: DEGAN.metric.DummyMetric
+    name: Dummy
+
+loss:
+  _target_: torch.nn.MSELoss
+
+data:
+  train:
+    batch_size: ${batch_size}
+    num_workers: 5
+    datasets:
+      - _target_: DEGAN.datasets.FFHQDataset
+trainer: 
+  epochs: 100
+  save_dir: "saved/"
+  save_period: 5
+  verbosity: 2
+  monitor: "min val_loss"
+  early_stop: 100
+  visualize: "wandb"
+  wandb_project: "degan_project"
+  wandb_run_name: "init_pipeline"
+  len_epoch: 3000
+  grad_norm_clip: 50
+
+wandb_key: 91898ab676432e8d5689a2ce4a88f7131dc1e45c
