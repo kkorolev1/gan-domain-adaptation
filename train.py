@@ -6,7 +6,6 @@ import numpy as np
 import torch
 
 import logging
-import itertools
 
 import hydra
 from hydra.utils import instantiate
@@ -38,7 +37,10 @@ def main(config):
     # setup data_loader instances
     dataloaders = get_dataloaders(config)
 
+    pretrained_cfg = config["pretrained"]
+
     generator = instantiate(config["generator"])
+    generator.load_state_dict(torch.load(pretrained_cfg["generator"])["g_ema"])
     logger.info(generator)
 
     domain_encoder = instantiate(config["domain_encoder"])
@@ -54,8 +56,8 @@ def main(config):
     domain_encoder = domain_encoder.to(device)
     clip_encoder = clip_encoder.to(device)
 
-    requires_grad(generator, False)
-    requires_grad(clip_encoder, False)
+    requires_grad(generator, requires=False)
+    requires_grad(clip_encoder, requires=False)
     
     # get function handles of loss and metrics
     loss_module = instantiate(config["loss"]).to(device)

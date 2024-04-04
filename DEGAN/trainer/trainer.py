@@ -103,8 +103,8 @@ class Trainer:
             *[m.name for m in self.metrics], writer=self.writer
         )
 
-        pretrained_cfg = config["pretrained"]
-        self.generator.load_state_dict(torch.load(pretrained_cfg["generator"])["g_ema"])
+        #TODO: Move this to a better place
+        self.src_emb_mc = torch.load("datasets/mean_clip_emb.pt")
 
         if config.resume is not None:
             self._resume_checkpoint(config.resume)
@@ -236,10 +236,10 @@ class Trainer:
             batch[tensor_for_gpu] = batch[tensor_for_gpu].to(device)
         return batch
 
-    def _clip_grad_norm(self):
+    def _clip_grad_norm(self, model):
         if self.config["trainer"].get("grad_norm_clip", None) is not None:
             clip_grad_norm_(
-                self.domain_encoder.parameters(), self.config["trainer"]["grad_norm_clip"]
+                model.parameters(), self.config["trainer"]["grad_norm_clip"]
             )
     
     def _train_epoch(self, epoch):
@@ -316,29 +316,19 @@ class Trainer:
         if is_train:
             gen_emb = self.clip_encoder.encode_img(gen_img)
             src_emb = self.clip_encoder.encode_img(src_img)
-
-            domain_dir_pred = gen_emb - src_emb
-            
-            # TODO: Sample B * N latents
             domain_emb = self.clip_encoder.encode_img(domain_img.detach())
-            N = 10
-            latents_mc = torch.randn(N * domain_img.shape[0], self.generator.style_dim, requires_grad=False, device=self.device)
-            src_image_mc = self.generator([latents_mc])[0]
-            src_emb_mc = self.clip_encoder.encode_img(src_image_mc).reshape(N, domain_img.shape[0], -1).mean(dim=0)
             
-            domain_dir = domain_emb - src_emb_mc
-            
-            loss = self.criterion(domain_dir_pred, domain_dir)
+            loss = self.criterion(gen_emb, src_emb, domain_emb, self.src_emb_mc)
 
             loss.backward()
-            self._clip_grad_norm()
+            self._clip_grad_norm(self.domain_encoder)
             self.optimizer_encoder.step()
             self.lr_scheduler_encoder.step()
 
             batch["loss"] = loss
 
             metrics.update("loss", batch["loss"].item())
-            metrics.update("grad norm", self.get_grad_norm())
+            metrics.update("grad norm", self.get_grad_norm(self.domain_encoder))
 
         batch["gen_img"] = gen_img
         batch["src_img"] = src_img
@@ -359,8 +349,8 @@ class Trainer:
         return base.format(current, total, 100.0 * current / total)
 
     @torch.no_grad()
-    def get_grad_norm(self, norm_type=2):
-        parameters = self.domain_encoder.parameters()
+    def get_grad_norm(self, model, norm_type=2):
+        parameters = model.parameters()
         if isinstance(parameters, torch.Tensor):
             parameters = [parameters]
         parameters = [p for p in parameters if p.grad is not None]

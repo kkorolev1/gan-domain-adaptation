@@ -15,9 +15,9 @@ class CLIP(BaseModel):
             *preprocess.transforms[:2],
             preprocess.transforms[-1]
         ])
+        self.emb_dim = self.model.token_embedding.embedding_dim
 
     def encode_img(self, img):
         emb = self.model.encode_image(self.preprocess(img))
         emb = emb / emb.norm(dim=-1, keepdim=True)
         return emb
-        
