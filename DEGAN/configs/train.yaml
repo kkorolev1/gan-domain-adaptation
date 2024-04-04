@@ -1,35 +1,19 @@
+defaults:
+  - models
+
 name: "train"
 n_gpu: 1
 
 optimizer_encoder:
   _target_: torch.optim.AdamW
-  lr: 0.0001
-  weight_decay: 0.0001
+  lr: 1e-4
+  weight_decay: 0
 
 lr_scheduler_encoder:
   _target_: torch.optim.lr_scheduler.ExponentialLR
-  gamma: 1
+  gamma: 0.999
 
-batch_size: 3
-img_size: 1024
-style_dim: 512
-
-generator:
-  _target_: DEGAN.model.Generator
-  size: ${img_size}
-  style_dim: ${style_dim}
-  n_mlp: 8
-
-domain_encoder:
-  _target_: DEGAN.model.DomainEncoder
-  domain_dim: 512
-
-clip_encoder:
-  _target_: DEGAN.model.CLIP
-  model_name: ViT-B/16
-
-pretrained:
-  generator: third-party/StyleDomain/SimilarDomains/pretrained/StyleGAN2/stylegan2-ffhq-config-f.pt
+batch_size: 10
 
 metrics: []
 

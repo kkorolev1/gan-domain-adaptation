@@ -1,0 +1,7 @@
+defaults:
+  - models
+
+n_gpu: 1
+batch_size: 10
+n_samples: 5000
+save_path: datasets/mean_clip_emb.pt

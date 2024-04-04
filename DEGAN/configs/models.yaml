@@ -1,0 +1,19 @@
+defaults:
+  - params
+
+generator:
+  _target_: DEGAN.model.Generator
+  size: ${img_size}
+  style_dim: ${domain_dim}
+  n_mlp: 8
+
+domain_encoder:
+  _target_: DEGAN.model.DomainEncoder
+  domain_dim: ${domain_dim}
+
+clip_encoder:
+  _target_: DEGAN.model.CLIP
+  model_name: ViT-B/16
+
+pretrained:
+  generator: third-party/StyleDomain/SimilarDomains/pretrained/StyleGAN2/stylegan2-ffhq-config-f.pt
