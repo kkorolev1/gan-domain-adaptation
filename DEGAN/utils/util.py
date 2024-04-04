@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pandas as pd
 import torch
+from torchvision.transforms import v2
 
 from pynvml import *
 
@@ -83,6 +84,17 @@ def prepare_device(n_gpu_use, logger):
     return device, list_ids
 
 
+def requires_grad(model, requires=False):
+    for param in model.parameters():
+        param.requires_grad = requires
+
+def ten2img(tensor):
+    tensor.clip_(-1, 1)
+    transform = v2.Compose([
+        v2.ToPILImage()
+    ])
+    return transform((tensor + 1) / 2)
+
 class MetricTracker:
     def __init__(self, *keys, writer=None):
         self.writer = writer
@@ -97,10 +109,9 @@ class MetricTracker:
     def update(self, key, value, n=1):
         # if self.writer is not None:
         #     self.writer.add_scalar(key, value)
-        self._data.total[key] += value * n
-        self._data.counts[key] += n
-        self._data.average[key] = self._data.total[key] / \
-            self._data.counts[key]
+        self._data.loc[key, "total"] += value * n
+        self._data.loc[key, "counts"] += n
+        self._data.loc[key, "average"] = self._data.loc[key, "total"] / self._data.loc[key, "counts"]
 
     def avg(self, key):
         return self._data.average[key]

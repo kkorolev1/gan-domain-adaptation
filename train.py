@@ -13,7 +13,7 @@ from hydra.utils import instantiate
 from omegaconf import OmegaConf
 
 from DEGAN.trainer import Trainer
-from DEGAN.utils import prepare_device
+from DEGAN.utils import prepare_device, requires_grad
 from DEGAN.utils.object_loading import get_dataloaders
 from DEGAN.utils.parse_config import ConfigParser
 
@@ -41,14 +41,22 @@ def main(config):
     generator = instantiate(config["generator"])
     logger.info(generator)
 
-    encoder = instantiate(config["encoder"])
+    domain_encoder = instantiate(config["domain_encoder"])
+    logger.info(domain_encoder)
+
+    clip_encoder = instantiate(config["clip_encoder"])
+    logger.info(clip_encoder)
 
     # prepare for (multi-device) GPU training
     device, device_ids = prepare_device(config["n_gpu"], logger)
     logger.info(f"Device {device} Ids {device_ids}")
     generator = generator.to(device)
-    encoder = encoder.to(device)
+    domain_encoder = domain_encoder.to(device)
+    clip_encoder = clip_encoder.to(device)
 
+    requires_grad(generator, False)
+    requires_grad(clip_encoder, False)
+    
     # get function handles of loss and metrics
     loss_module = instantiate(config["loss"]).to(device)
     metrics = [
@@ -61,16 +69,15 @@ def main(config):
     logger.info(f'Dataset size {len(dataloaders["train"].dataset)}')
     # build optimizer, learning rate scheduler. delete every line containing lr_scheduler for
     # disabling scheduler
-    # optimizer_d = instantiate(
-    #     config["optimizer_d"], trainable_params_d)
     trainable_params_encoder = filter(
-        lambda p: p.requires_grad, encoder.parameters())
+        lambda p: p.requires_grad, domain_encoder.parameters())
     optimizer_encoder = instantiate(
         config["optimizer_encoder"], trainable_params_encoder)
     lr_scheduler_encoder = instantiate(config["lr_scheduler_encoder"], optimizer_encoder)
     trainer = Trainer(
         generator,
-        encoder,
+        domain_encoder,
+        clip_encoder,
         loss_module,
         metrics,
         optimizer_encoder,

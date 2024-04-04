@@ -11,10 +11,10 @@ import torch.nn.functional as F
 from torch.nn.utils import clip_grad_norm_
 from tqdm import tqdm
 import os
+from torchvision.transforms import v2
+from torchvision.utils import make_grid
 
-
-from DEGAN.utils import inf_loop, MetricTracker
-
+from DEGAN.utils import inf_loop, MetricTracker, ten2img
 from DEGAN.logger import get_visualizer
 
 class Trainer:
@@ -25,7 +25,8 @@ class Trainer:
     def __init__(
             self,
             generator,
-            encoder,
+            domain_encoder,
+            clip_encoder,
             criterion,
             metrics,
             optimizer_encoder,
@@ -37,7 +38,8 @@ class Trainer:
             skip_oom=True
     ):
         self.generator = generator
-        self.encoder = encoder
+        self.domain_encoder = domain_encoder
+        self.clip_encoder = clip_encoder
 
         self.device = device
         self.config = config
@@ -94,13 +96,15 @@ class Trainer:
         self.log_step = 50
 
         self.train_metrics = MetricTracker(
-            "g_loss",
-            "g_grad_norm",
+            "loss", "grad norm",
             *[m.name for m in self.metrics], writer=self.writer
         )
         self.evaluation_metrics = MetricTracker(
-            "loss", *[m.name for m in self.metrics], writer=self.writer
+            *[m.name for m in self.metrics], writer=self.writer
         )
+
+        pretrained_cfg = config["pretrained"]
+        self.generator.load_state_dict(torch.load(pretrained_cfg["generator"])["g_ema"])
 
         if config.resume is not None:
             self._resume_checkpoint(config.resume)
@@ -180,7 +184,7 @@ class Trainer:
 
         state = {
             "epoch": epoch,
-            "state_dict_encoder": self.encoder.state_dict(),
+            "state_dict_encoder": self.domain_encoder.state_dict(),
             "optimizer_encoder": self.optimizer_encoder.state_dict(),
             "lr_scheduler_encoder": self.lr_scheduler_encoder.state_dict(),
             "monitor_best": self.mnt_best,
@@ -209,7 +213,7 @@ class Trainer:
         self.start_epoch = checkpoint["epoch"] + 1
         self.mnt_best = checkpoint["monitor_best"]
 
-        self.encoder.load_state_dict(checkpoint["state_dict_encoder"])
+        self.domain_encoder.load_state_dict(checkpoint["state_dict_encoder"])
 
         if not self.reset_optimizer:
             self.logger.info("Loading optimizer state")
@@ -228,14 +232,14 @@ class Trainer:
         """
         Move all necessary tensors to the HPU
         """
-        for tensor_for_gpu in ["wav_gt", "mel_gt"]:
+        for tensor_for_gpu in batch:
             batch[tensor_for_gpu] = batch[tensor_for_gpu].to(device)
         return batch
 
-    def _clip_grad_norm(self, module):
+    def _clip_grad_norm(self):
         if self.config["trainer"].get("grad_norm_clip", None) is not None:
             clip_grad_norm_(
-                module.parameters(), self.config["trainer"]["grad_norm_clip"]
+                self.domain_encoder.parameters(), self.config["trainer"]["grad_norm_clip"]
             )
     
     def _train_epoch(self, epoch):
@@ -245,7 +249,9 @@ class Trainer:
         :param epoch: Integer, current training epoch.
         :return: A log that contains average loss and metric in this epoch.
         """
-        self.encoder.train()
+        self.generator.eval()
+        self.domain_encoder.train()
+        self.clip_encoder.eval()
 
         self.train_metrics.reset()
         self.writer.add_scalar("epoch", epoch)
@@ -257,6 +263,7 @@ class Trainer:
                     batch,
                     batch_idx,
                     metrics=self.train_metrics,
+                    is_train=True
                 )
             except RuntimeError as e:
                 if "out of memory" in str(e) and self.skip_oom:
@@ -271,18 +278,14 @@ class Trainer:
             if batch_idx % self.log_step == 0:
                 self.writer.set_step((epoch - 1) * self.len_epoch + batch_idx)
                 self.logger.debug(
-                    "Train Epoch: {} {} DLoss: {:.6f} GLoss: {:.6f}".format(
-                        epoch, self._progress(batch_idx), batch["d_loss"].item(),
-                        batch["g_loss"].item()
+                    "Train Epoch: {} {} Loss: {:.6f}".format(
+                        epoch, self._progress(batch_idx), batch["loss"].item()
                     )
                 )
                 self.writer.add_scalar(
-                    "discriminator learning rate", self.lr_scheduler_d.get_last_lr()[0]
+                    "learning rate", self.lr_scheduler_encoder.get_last_lr()[0]
                 )
-                self.writer.add_scalar(
-                    "generator learning rate", self.lr_scheduler_g.get_last_lr()[0]
-                )
-                self._log_predictions(**batch, is_train=True)
+                #self._log_predictions(**batch, is_train=True)
                 self._log_scalars(self.train_metrics)
                 # we don't want to reset train metrics at the start of every epoch
                 # because we are interested in recent train metrics
@@ -292,86 +295,56 @@ class Trainer:
                 break
         log = last_train_metrics
 
-        self.lr_scheduler_d.step()
-        self.lr_scheduler_g.step()
+        for part, dataloader in self.evaluation_dataloaders.items():
+            val_log = self._evaluation_epoch(epoch, part, dataloader)
+            log.update(**{f"{part}_{name}": value for name, value in val_log.items()})
 
         return log
 
 
-    def process_batch(self, batch, batch_idx, metrics: MetricTracker):
+    def process_batch(self, batch, batch_idx, metrics: MetricTracker, is_train=True):
         batch = self.move_batch_to_device(batch, self.device)
+        if is_train:
+            self.optimizer_encoder.zero_grad()
 
-        wav_gt = batch["wav_gt"]
-        mel_spec_gt = batch["mel_gt"]
+        domain_img = batch["domain_img"]
+        latents = torch.randn(domain_img.shape[0], self.generator.style_dim, device=self.device)
+        domain_emb = self.domain_encoder(domain_img)
+        gen_img = self.generator([latents], domain_emb)[0]
+        src_img = self.generator([latents.detach()])[0]
 
-        wav_pred = self.model.generator(mel_spec_gt)
-        batch["wav_pred"] = wav_pred
-        mel_spec_pred = self.mel_spec_transform(wav_pred).squeeze(1)
+        if is_train:
+            gen_emb = self.clip_encoder.encode_img(gen_img)
+            src_emb = self.clip_encoder.encode_img(src_img)
 
-        # ---- Discriminator loss
-        self.optimizer_d.zero_grad()
+            domain_dir_pred = gen_emb - src_emb
+            
+            # TODO: Sample B * N latents
+            domain_emb = self.clip_encoder.encode_img(domain_img.detach())
+            N = 10
+            latents_mc = torch.randn(N * domain_img.shape[0], self.generator.style_dim, requires_grad=False, device=self.device)
+            src_image_mc = self.generator([latents_mc])[0]
+            src_emb_mc = self.clip_encoder.encode_img(src_image_mc).reshape(N, domain_img.shape[0], -1).mean(dim=0)
+            
+            domain_dir = domain_emb - src_emb_mc
+            
+            loss = self.criterion(domain_dir_pred, domain_dir)
 
-        # Don't need features for discriminator loss
-        mpd_gt_outputs, _ = self.model.mpd(wav_gt)
-        mpd_outputs, _ = self.model.mpd(wav_pred.detach())
+            loss.backward()
+            self._clip_grad_norm()
+            self.optimizer_encoder.step()
+            self.lr_scheduler_encoder.step()
 
-        msd_gt_outputs, _ = self.model.msd(wav_gt)
-        msd_outputs, _ = self.model.msd(wav_pred.detach())
+            batch["loss"] = loss
 
-        mpd_d_loss = self.criterion.discriminator_adv_loss(mpd_gt_outputs, mpd_outputs)
-        msd_d_loss = self.criterion.discriminator_adv_loss(msd_gt_outputs, msd_outputs)
+            metrics.update("loss", batch["loss"].item())
+            metrics.update("grad norm", self.get_grad_norm())
 
-        d_loss = mpd_d_loss + msd_d_loss
+        batch["gen_img"] = gen_img
+        batch["src_img"] = src_img
 
-        d_loss.backward()
-        # TODO: clip_grad_norm
-        self._clip_grad_norm(self.model.mpd)
-        self._clip_grad_norm(self.model.msd)
-        self.optimizer_d.step()
-
-        batch["mpd_d_loss"] = mpd_d_loss
-        batch["msd_d_loss"] = msd_d_loss
-        batch["d_loss"] = d_loss
-        
-        d_params = itertools.chain(self.model.mpd.parameters(), self.model.msd.parameters())
-        batch["d_grad_norm"] = torch.tensor([self.get_grad_norm(d_params)])
-
-        # ---- Generator loss
-        self.optimizer_g.zero_grad()
-
-        # Don't need gt output for generator loss
-        _, mpd_gt_features = self.model.mpd(wav_gt)
-        mpd_outputs, mpd_features = self.model.mpd(wav_pred)
-
-        _, msd_gt_features = self.model.msd(wav_gt)
-        msd_outputs, msd_features = self.model.msd(wav_pred)
-
-        mpd_g_loss = self.criterion.generator_adv_loss(mpd_outputs)
-        msd_g_loss = self.criterion.generator_adv_loss(msd_outputs)
-
-        mel_spec_g_loss = self.criterion.mel_spectrogram_loss(mel_spec_gt, mel_spec_pred)
-        
-        mpd_features_g_loss = self.criterion.feature_matching_loss(mpd_gt_features, mpd_features)
-        msd_features_g_loss = self.criterion.feature_matching_loss(msd_gt_features, msd_features)
-
-        g_loss = mpd_g_loss + msd_g_loss + mel_spec_g_loss + mpd_features_g_loss + msd_features_g_loss
-
-        g_loss.backward()
-        # TODO: clip_grad_norm
-        self._clip_grad_norm(self.model.generator)
-        self.optimizer_g.step()
-
-        batch["mpd_g_loss"] = mpd_g_loss
-        batch["msd_g_loss"] = msd_g_loss
-        batch["mel_spec_g_loss"] = mel_spec_g_loss
-        batch["mpd_features_g_loss"] = mpd_features_g_loss
-        batch["msd_features_g_loss"] = msd_features_g_loss
-        batch["g_loss"] = g_loss
-        g_params = self.model.generator.parameters()
-        batch["g_grad_norm"] = torch.tensor([self.get_grad_norm(g_params)])
-    
-        for metric_key in metrics.keys():
-            metrics.update(metric_key, batch[metric_key].item())
+        for met in self.metrics:
+            metrics.update(met.name, met(**batch))
 
         return batch
 
@@ -386,7 +359,8 @@ class Trainer:
         return base.format(current, total, 100.0 * current / total)
 
     @torch.no_grad()
-    def get_grad_norm(self, parameters, norm_type=2):
+    def get_grad_norm(self, norm_type=2):
+        parameters = self.domain_encoder.parameters()
         if isinstance(parameters, torch.Tensor):
             parameters = [parameters]
         parameters = [p for p in parameters if p.grad is not None]
@@ -404,3 +378,54 @@ class Trainer:
             return
         for metric_name in metric_tracker.keys():
             self.writer.add_scalar(f"{metric_name}", metric_tracker.avg(metric_name))
+
+    def _evaluation_epoch(self, epoch, part, dataloader):
+        """
+        Validate after training an epoch
+
+        :param epoch: Integer, current training epoch.
+        :return: A log that contains information about validation
+        """
+        self.domain_encoder.eval()
+        self.evaluation_metrics.reset()
+        with torch.no_grad():
+            for batch_idx, batch in tqdm(
+                    enumerate(dataloader),
+                    desc=part,
+                    total=len(dataloader),
+            ):
+                batch = self.process_batch(
+                    batch,
+                    batch_idx,
+                    metrics=self.evaluation_metrics,
+                    is_train=False
+                )
+            self.writer.set_step(epoch * self.len_epoch, part)
+            self._log_scalars(self.evaluation_metrics)
+            self._log_predictions(**batch)
+
+        # add histogram of model parameters to the tensorboard
+        #for name, p in self.model.named_parameters():
+            #self.writer.add_histogram(name, p, bins="auto")
+        return self.evaluation_metrics.result()
+    
+    def _log_predictions(
+            self,
+            domain_img: torch.tensor,
+            gen_img,
+            src_img,
+            examples_to_log=3,
+            *args,
+            **kwargs
+    ):
+        if self.writer is None:
+            return
+
+        gen_img = gen_img.clip(-1, 1)
+        src_img = src_img.clip(-1, 1)
+        transform = v2.Compose([
+            v2.ToPILImage()
+        ])
+        for i in range(examples_to_log):
+            grid = make_grid([domain_img[i], gen_img[i], src_img[i]], nrow=3, value_range=(-1, 1), normalize=True)
+            self.writer.add_image(f"grid_{i + 1}", transform(grid.cpu()))

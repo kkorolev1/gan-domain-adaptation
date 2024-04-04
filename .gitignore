@@ -3,3 +3,5 @@ datasets/*
 outputs/*
 saved/*
 wandb/*
+**/.ipynb_checkpoints/
+**/pretrained/

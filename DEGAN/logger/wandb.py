@@ -2,6 +2,7 @@ from datetime import datetime
 
 import numpy as np
 import pandas as pd
+import wandb
 
 
 class WanDBWriter:
@@ -10,7 +11,6 @@ class WanDBWriter:
         self.selected_module = ""
 
         try:
-            import wandb
             wandb.login(relogin=True, key=config["wandb_key"])
 
             if config['trainer'].get('wandb_project') is None:
