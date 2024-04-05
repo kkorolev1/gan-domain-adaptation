@@ -4,7 +4,7 @@ defaults:
 generator:
   _target_: DEGAN.model.Generator
   size: ${img_size}
-  style_dim: ${domain_dim}
+  style_dim: ${style_dim}
   n_mlp: 8
 
 domain_encoder:

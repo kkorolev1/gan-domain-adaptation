@@ -5,15 +5,14 @@ name: "train"
 n_gpu: 1
 
 optimizer_encoder:
-  _target_: torch.optim.AdamW
-  lr: 1e-4
-  weight_decay: 0
+  _target_: torch.optim.Adam
+  lr: 5e-5
 
 lr_scheduler_encoder:
   _target_: torch.optim.lr_scheduler.ExponentialLR
-  gamma: 0.999
+  gamma: 1
 
-batch_size: 10
+batch_size: 5
 
 metrics: []
 
@@ -43,8 +42,8 @@ trainer:
   early_stop: 100
   visualize: "wandb"
   wandb_project: "degan_project"
-  wandb_run_name: "init_pipeline"
-  len_epoch: 100
-  grad_norm_clip: 50
+  wandb_run_name: "style_space"
+  len_epoch: 200
+  grad_norm_clip: 20
 
 wandb_key: 91898ab676432e8d5689a2ce4a88f7131dc1e45c

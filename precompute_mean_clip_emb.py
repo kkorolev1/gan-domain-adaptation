@@ -49,9 +49,11 @@ def main(config):
 
     generator = instantiate(config["generator"])
     generator.load_state_dict(torch.load(pretrained_cfg["generator"])["g_ema"])
+    requires_grad(generator, requires=False)
     logger.info(generator)
 
     clip_encoder = instantiate(config["clip_encoder"])
+    requires_grad(clip_encoder, requires=False)
     logger.info(clip_encoder)
 
     # prepare for (multi-device) GPU training
@@ -59,9 +61,6 @@ def main(config):
     logger.info(f"Device {device} Ids {device_ids}")
     generator = generator.to(device)
     clip_encoder = clip_encoder.to(device)
-
-    requires_grad(generator, requires=False)
-    requires_grad(clip_encoder, requires=False)
 
     mean_emb = generate_mean_clip_emb(
         generator, clip_encoder, 

@@ -2,6 +2,7 @@ import math
 import random
 import functools
 import operator
+import numpy as np
 
 import torch
 from torch import nn
@@ -224,12 +225,14 @@ class ModulatedConv2d(nn.Module):
             f"upsample={self.upsample}, downsample={self.downsample})"
         )
 
-    def forward(self, input, style):
+    def forward(self, input, style, domain=None):
         batch, in_channel, height, width = input.shape
 
         if not self.fused:
             weight = self.scale * self.weight.squeeze(0)
             style = self.modulation(style)
+            if domain is not None:
+                style = style + domain.view(batch, 1, in_channel, 1, 1)
 
             if self.demodulate:
                 w = weight.unsqueeze(0) * style.view(batch, 1, in_channel, 1, 1)
@@ -257,6 +260,9 @@ class ModulatedConv2d(nn.Module):
             return out
 
         style = self.modulation(style).view(batch, 1, in_channel, 1, 1)
+
+        if domain is not None:
+            style = style + domain.view(batch, 1, in_channel, 1, 1)
         weight = self.scale * self.weight * style
 
         if self.demodulate:
@@ -358,8 +364,8 @@ class StyledConv(nn.Module):
         # self.activate = ScaledLeakyReLU(0.2)
         self.activate = FusedLeakyReLU(out_channel)
 
-    def forward(self, input, style, noise=None):
-        out = self.conv(input, style)
+    def forward(self, input, style, domain=None, noise=None):
+        out = self.conv(input, style, domain=domain)
         out = self.noise(out, noise=noise)
         # out = out + self.bias
         out = self.activate(out)
@@ -377,8 +383,8 @@ class ToRGB(nn.Module):
         self.conv = ModulatedConv2d(in_channel, 3, 1, style_dim, demodulate=False)
         self.bias = nn.Parameter(torch.zeros(1, 3, 1, 1))
 
-    def forward(self, input, style, skip=None):
-        out = self.conv(input, style)
+    def forward(self, input, style, domain=None, skip=None):
+        out = self.conv(input, style, domain=domain)
         out = out + self.bias
 
         if skip is not None:
@@ -474,6 +480,10 @@ class Generator(BaseModel):
             in_channel = out_channel
 
         self.n_latent = self.log_size * 2 - 2
+        
+        out_channels = list(self.channels.values())
+        self.style_space_dim_cumsum = np.cumsum(np.stack((out_channels, out_channels), axis=1).flatten())
+        self.style_space_dim = self.style_space_dim_cumsum[-1]
 
     def make_noise(self):
         device = self.input.input.device
@@ -496,6 +506,16 @@ class Generator(BaseModel):
 
     def get_latent(self, input):
         return self.style(input)
+
+    def _style_space_part(self, domain_emb, index):
+        """
+        Returns a domain embedding in StyleSpace for specific layer
+            domain_emb: (B, style_space_dim)
+            index: index of a layer in range [0, 17]
+        """
+        start = self.style_space_dim_cumsum[index - 1] if index > 0 else 0
+        end = self.style_space_dim_cumsum[index]
+        return domain_emb[:, start: end]
 
     def forward(
         self,
@@ -548,21 +568,21 @@ class Generator(BaseModel):
 
             latent = torch.cat([latent, latent2], 1)
 
-        if domain_emb is not None:
-            latent = latent + domain_emb.view(domain_emb.shape[0], 1, domain_emb.shape[1])
-            
-        out = self.input(latent)
-        out = self.conv1(out, latent[:, 0], noise=noise[0])
+        if domain_emb is None:
+            domain_emb = torch.zeros((latent.shape[0], self.style_space_dim), device=latent.device)
 
-        skip = self.to_rgb1(out, latent[:, 1])
+        out = self.input(latent)
+        out = self.conv1(out, latent[:, 0], domain=self._style_space_part(domain_emb, 0), noise=noise[0])
+
+        skip = self.to_rgb1(out, latent[:, 1], domain=self._style_space_part(domain_emb, 1))
 
         i = 1
         for conv1, conv2, noise1, noise2, to_rgb in zip(
             self.convs[::2], self.convs[1::2], noise[1::2], noise[2::2], self.to_rgbs
         ):
-            out = conv1(out, latent[:, i], noise=noise1)
-            out = conv2(out, latent[:, i + 1], noise=noise2)
-            skip = to_rgb(out, latent[:, i + 2], skip)
+            out = conv1(out, latent[:, i], domain=self._style_space_part(domain_emb, i), noise=noise1)
+            out = conv2(out, latent[:, i + 1], domain=self._style_space_part(domain_emb, i + 1), noise=noise2)
+            skip = to_rgb(out, latent[:, i + 2], domain=self._style_space_part(domain_emb, i + 2), skip=skip)
 
             i += 2
 

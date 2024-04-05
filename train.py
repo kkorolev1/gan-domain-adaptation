@@ -41,12 +41,14 @@ def main(config):
 
     generator = instantiate(config["generator"])
     generator.load_state_dict(torch.load(pretrained_cfg["generator"])["g_ema"])
+    requires_grad(generator, requires=False)
     logger.info(generator)
 
     domain_encoder = instantiate(config["domain_encoder"])
     logger.info(domain_encoder)
 
     clip_encoder = instantiate(config["clip_encoder"])
+    requires_grad(clip_encoder, requires=False)
     logger.info(clip_encoder)
 
     # prepare for (multi-device) GPU training
@@ -55,9 +57,6 @@ def main(config):
     generator = generator.to(device)
     domain_encoder = domain_encoder.to(device)
     clip_encoder = clip_encoder.to(device)
-
-    requires_grad(generator, requires=False)
-    requires_grad(clip_encoder, requires=False)
     
     # get function handles of loss and metrics
     loss_module = instantiate(config["loss"]).to(device)

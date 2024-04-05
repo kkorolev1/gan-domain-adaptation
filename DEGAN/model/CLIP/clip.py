@@ -18,6 +18,6 @@ class CLIP(BaseModel):
         self.emb_dim = self.model.token_embedding.embedding_dim
 
     def encode_img(self, img):
-        emb = self.model.encode_image(self.preprocess(img))
+        emb = self.model.encode_image(self.preprocess(img)).float()
         emb = emb / emb.norm(dim=-1, keepdim=True)
         return emb

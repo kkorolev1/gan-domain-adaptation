@@ -93,13 +93,14 @@ class Trainer:
             self.train_dataloader = inf_loop(self.train_dataloader)
             self.len_epoch = len_epoch
         self.evaluation_dataloaders = {k: v for k, v in dataloaders.items() if k != "train"}
-        self.log_step = 50
+        self.log_step = 100
 
         self.train_metrics = MetricTracker(
             "loss", "grad norm",
             *[m.name for m in self.metrics], writer=self.writer
         )
         self.evaluation_metrics = MetricTracker(
+            "loss",
             *[m.name for m in self.metrics], writer=self.writer
         )
 
@@ -268,7 +269,7 @@ class Trainer:
             except RuntimeError as e:
                 if "out of memory" in str(e) and self.skip_oom:
                     self.logger.warning("OOM on batch. Skipping batch.")
-                    for p in self.model.parameters():
+                    for p in self.domain_encoder.parameters():
                         if p.grad is not None:
                             del p.grad  # free some memory
                     torch.cuda.empty_cache()
@@ -285,7 +286,7 @@ class Trainer:
                 self.writer.add_scalar(
                     "learning rate", self.lr_scheduler_encoder.get_last_lr()[0]
                 )
-                #self._log_predictions(**batch, is_train=True)
+                self._log_predictions(**batch, batch_idx=batch_idx, is_train=False)
                 self._log_scalars(self.train_metrics)
                 # we don't want to reset train metrics at the start of every epoch
                 # because we are interested in recent train metrics
@@ -308,28 +309,27 @@ class Trainer:
             self.optimizer_encoder.zero_grad()
 
         domain_img = batch["domain_img"]
-        latents = torch.randn(domain_img.shape[0], self.generator.style_dim, device=self.device)
-        domain_emb = self.domain_encoder(domain_img)
-        gen_img = self.generator([latents], domain_emb)[0]
-        src_img = self.generator([latents.detach()])[0]
+        latents = torch.randn(domain_img.shape[0], self.generator.style_dim, requires_grad=False, device=self.device)
+        d = self.domain_encoder(domain_img)
+        gen_img = self.generator([latents], d)[0]
+        src_img = self.generator([latents])[0]
+
+        gen_emb = self.clip_encoder.encode_img(gen_img)
+        src_emb = self.clip_encoder.encode_img(src_img)
+        domain_emb = self.clip_encoder.encode_img(domain_img.detach())
+            
+        loss = self.criterion(d, gen_emb, src_emb, domain_emb, self.src_emb_mc)
 
         if is_train:
-            gen_emb = self.clip_encoder.encode_img(gen_img)
-            src_emb = self.clip_encoder.encode_img(src_img)
-            domain_emb = self.clip_encoder.encode_img(domain_img.detach())
-            
-            loss = self.criterion(gen_emb, src_emb, domain_emb, self.src_emb_mc)
-
             loss.backward()
             self._clip_grad_norm(self.domain_encoder)
             self.optimizer_encoder.step()
             self.lr_scheduler_encoder.step()
-
-            batch["loss"] = loss
-
-            metrics.update("loss", batch["loss"].item())
             metrics.update("grad norm", self.get_grad_norm(self.domain_encoder))
 
+        batch["loss"] = loss
+        metrics.update("loss", batch["loss"].item())
+        
         batch["gen_img"] = gen_img
         batch["src_img"] = src_img
 
@@ -379,6 +379,8 @@ class Trainer:
         self.domain_encoder.eval()
         self.evaluation_metrics.reset()
         with torch.no_grad():
+            self.writer.set_step(epoch * self.len_epoch, part)
+
             for batch_idx, batch in tqdm(
                     enumerate(dataloader),
                     desc=part,
@@ -390,9 +392,8 @@ class Trainer:
                     metrics=self.evaluation_metrics,
                     is_train=False
                 )
-            self.writer.set_step(epoch * self.len_epoch, part)
+                self._log_predictions(**batch, batch_idx=batch_idx, is_train=False)
             self._log_scalars(self.evaluation_metrics)
-            self._log_predictions(**batch)
 
         # add histogram of model parameters to the tensorboard
         #for name, p in self.model.named_parameters():
@@ -404,6 +405,8 @@ class Trainer:
             domain_img: torch.tensor,
             gen_img,
             src_img,
+            batch_idx=None,
+            is_train=True,
             examples_to_log=3,
             *args,
             **kwargs
@@ -416,6 +419,12 @@ class Trainer:
         transform = v2.Compose([
             v2.ToPILImage()
         ])
-        for i in range(examples_to_log):
-            grid = make_grid([domain_img[i], gen_img[i], src_img[i]], nrow=3, value_range=(-1, 1), normalize=True)
+
+        indices = list(range(domain_img.shape[0]))
+        shuffle(indices)
+        examples_to_log = min(domain_img.shape[0], examples_to_log)
+        indices = indices[:examples_to_log]
+
+        for i, index in enumerate(indices):
+            grid = make_grid([domain_img[index], gen_img[index], src_img[index]], nrow=3, value_range=(-1, 1), normalize=True)
             self.writer.add_image(f"grid_{i + 1}", transform(grid.cpu()))
