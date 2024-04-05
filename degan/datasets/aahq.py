@@ -1,4 +1,4 @@
-from DEGAN.base import BaseDataset
+from degan.base import BaseDataset
 
 class AAHQDataset(BaseDataset):
     def __init__(self, root_path):

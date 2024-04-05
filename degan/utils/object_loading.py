@@ -4,8 +4,8 @@ from torch.utils.data import ConcatDataset, DataLoader
 
 from hydra.utils import instantiate
 
-import DEGAN.datasets
-from DEGAN.utils.parse_config import ConfigParser
+import degan.datasets
+from degan.utils.parse_config import ConfigParser
 
 
 def get_dataloaders(configs: ConfigParser):

@@ -1,5 +1,5 @@
-from DEGAN.datasets.ffhq import FFHQDataset
-from DEGAN.datasets.aahq import AAHQDataset
+from degan.datasets.ffhq import FFHQDataset
+from degan.datasets.aahq import AAHQDataset
 
 __all__ = [
     "FFHQDataset",

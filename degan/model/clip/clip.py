@@ -2,7 +2,7 @@ import clip
 import torch.nn as nn
 from torchvision.transforms import v2
 
-from DEGAN.base import BaseModel
+from degan.base import BaseModel
 
 class CLIP(BaseModel):
     def __init__(self, model_name):

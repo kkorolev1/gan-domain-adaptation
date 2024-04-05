@@ -2,7 +2,7 @@ import logging
 import logging.config
 from pathlib import Path
 
-from DEGAN.utils import read_json, ROOT_PATH
+from degan.utils import read_json, ROOT_PATH
 
 
 def setup_logging(
@@ -12,7 +12,7 @@ def setup_logging(
     Setup logging configuration
     """
     if log_config is None:
-        log_config = str(ROOT_PATH / "DEGAN" / "logger" / "logger_config.json")
+        log_config = str(ROOT_PATH / "degan" / "logger" / "logger_config.json")
     log_config = Path(log_config)
     if log_config.is_file():
         config = read_json(log_config)

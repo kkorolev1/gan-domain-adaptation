@@ -14,8 +14,8 @@ import os
 from torchvision.transforms import v2
 from torchvision.utils import make_grid
 
-from DEGAN.utils import inf_loop, MetricTracker, ten2img
-from DEGAN.logger import get_visualizer
+from degan.utils import inf_loop, MetricTracker, ten2img
+from degan.logger import get_visualizer
 
 class Trainer:
     """

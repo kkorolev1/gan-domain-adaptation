@@ -1,4 +1,4 @@
-from DEGAN.base.base_metric import BaseMetric
+from degan.base.base_metric import BaseMetric
 class DummyMetric(BaseMetric):
     def __init__(self, name=None, *args, **kwargs):
         super().__init__(name, *args, **kwargs)

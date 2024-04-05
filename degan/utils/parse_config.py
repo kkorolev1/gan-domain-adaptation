@@ -8,8 +8,8 @@ from operator import getitem
 from pathlib import Path
 
 
-from DEGAN.logger import setup_logging
-from DEGAN.utils import read_json, write_json, ROOT_PATH
+from degan.logger import setup_logging
+from degan.utils import read_json, write_json, ROOT_PATH
 
 
 class ConfigParser:
@@ -150,13 +150,13 @@ class ConfigParser:
 
     @classmethod
     def get_default_configs(cls):
-        config_path = ROOT_PATH / "DEGAN" / "config.json"
+        config_path = ROOT_PATH / "degan" / "config.json"
         with config_path.open() as f:
             return cls(json.load(f))
 
     @classmethod
     def get_test_configs(cls):
-        config_path = ROOT_PATH / "DEGAN" / "tests" / "config.json"
+        config_path = ROOT_PATH / "degan" / "tests" / "config.json"
         with config_path.open() as f:
             return cls(json.load(f))
 

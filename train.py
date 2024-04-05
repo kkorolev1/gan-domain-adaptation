@@ -11,10 +11,10 @@ import hydra
 from hydra.utils import instantiate
 from omegaconf import OmegaConf
 
-from DEGAN.trainer import Trainer
-from DEGAN.utils import prepare_device, requires_grad
-from DEGAN.utils.object_loading import get_dataloaders
-from DEGAN.utils.parse_config import ConfigParser
+from degan.trainer import Trainer
+from degan.utils import prepare_device, requires_grad
+from degan.utils.object_loading import get_dataloaders
+from degan.utils.parse_config import ConfigParser
 
 
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -27,7 +27,7 @@ torch.backends.cudnn.benchmark = True
 np.random.seed(SEED)
 
 
-@hydra.main(version_base=None, config_path="DEGAN/configs", config_name="train")
+@hydra.main(version_base=None, config_path="degan/configs", config_name="train")
 def main(config):
     OmegaConf.resolve(config)
     config = ConfigParser(OmegaConf.to_container(config))

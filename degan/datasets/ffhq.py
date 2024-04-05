@@ -1,7 +1,7 @@
 from glob import glob
 import os
 
-from DEGAN.base import BaseDataset
+from degan.base import BaseDataset
 
 
 class FFHQDataset(BaseDataset):

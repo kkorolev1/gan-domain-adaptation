@@ -9,9 +9,9 @@ from torch import nn
 from torch.nn import functional as F
 from torch.autograd import Function
 
-from DEGAN.op import FusedLeakyReLU, fused_leaky_relu, upfirdn2d
+from degan.op import FusedLeakyReLU, fused_leaky_relu, upfirdn2d
 
-from DEGAN.base import BaseModel
+from degan.base import BaseModel
 
 class PixelNorm(nn.Module):
     def __init__(self):

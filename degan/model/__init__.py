@@ -1,3 +1,3 @@
-from DEGAN.model.DEGAN.stylegan2 import *
-from DEGAN.model.DEGAN.encoder import *
-from DEGAN.model.CLIP.clip import *
+from degan.model.degan.stylegan2 import *
+from degan.model.degan.encoder import *
+from degan.model.clip.clip import *

@@ -17,20 +17,20 @@ batch_size: 5
 metrics: []
 
 loss:
-  _target_: DEGAN.loss.DELoss
+  _target_: degan.loss.DELoss
 
 data:
   train:
     batch_size: ${batch_size}
     num_workers: 5
     datasets:
-      - _target_: DEGAN.datasets.AAHQDataset
+      - _target_: degan.datasets.AAHQDataset
         root_path: datasets/aahq-dataset/aligned
   val:
     batch_size: ${batch_size}
     num_workers: 5
     datasets:
-      - _target_: DEGAN.datasets.AAHQDataset
+      - _target_: degan.datasets.AAHQDataset
         root_path: datasets/aahq-test
 
 trainer: 

@@ -3,7 +3,7 @@ from torch import nn
 from torchvision.models import resnet50, ResNet50_Weights
 from torchvision.transforms import v2
 
-from DEGAN.base import BaseModel
+from degan.base import BaseModel
 
 class DomainEncoder(BaseModel):
     def __init__(self, domain_dim):
