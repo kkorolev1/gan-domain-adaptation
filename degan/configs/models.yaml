@@ -16,4 +16,4 @@ clip_encoder:
   model_name: ViT-B/16
 
 pretrained:
-  generator: third-party/StyleDomain/SimilarDomains/pretrained/StyleGAN2/stylegan2-ffhq-config-f.pt
+  generator: pretrained/stylegan2-ffhq-config-f.pt

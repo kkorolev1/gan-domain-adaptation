@@ -6,7 +6,7 @@ from pathlib import Path
 import pandas as pd
 import torch
 from torchvision.transforms import v2
-
+from PIL import Image
 from pynvml import *
 
 
@@ -94,6 +94,12 @@ def ten2img(tensor):
         v2.ToPILImage()
     ])
     return transform((tensor + 1) / 2)
+
+def get_concat_h(im1, im2):
+    dst = Image.new('RGB', (im1.width + im2.width, im1.height))
+    dst.paste(im1, (0, 0))
+    dst.paste(im2, (im1.width, 0))
+    return dst
 
 class MetricTracker:
     def __init__(self, *keys, writer=None):

@@ -1,10 +1,8 @@
 from degan.base.base_metric import BaseMetric
-class DummyMetric(BaseMetric):
-    def __init__(self, name=None, *args, **kwargs):
-        super().__init__(name, *args, **kwargs)
-    def __call__(self, **kwargs):
-        raise NotImplementedError()
+from degan.metric.semantic_score import SemanticScore
+from degan.metric.diversity_score import DiversityScore
 
 __all__ = [
-    "DummyMetric"
+    "SemanticScore",
+    "DiversityScore"
 ]

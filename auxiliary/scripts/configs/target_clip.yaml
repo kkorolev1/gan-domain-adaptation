@@ -1,0 +1,59 @@
+root_path: third_party/TargetCLIP
+ffhq_path: datasets/ffhq-test
+save_dir: eval/TargetCLIP
+
+eval_targets:
+  - Dumbledore
+  - Ariel
+  - Trump
+
+generator:
+  size: 1024
+  style_dim: 512
+  n_mlp: 8
+  ckpt: pretrained/stylegan2-ffhq-config-f.pt
+
+encoder:
+  ckpt: third_party/encoder4editing/e4e_ffhq_encode.pt
+
+dirs:
+  Elsa: dirs/elsa.npy
+  Pocahontas: dirs/pocahontas.npy
+  Keanu Reeves: dirs/keanu.npy
+  Trump: dirs/trump.npy
+  Joker: dirs/joker.npy
+  Ariel: dirs/ariel.npy
+  Doc Brown: dirs/doc.npy
+  Beyonce: dirs/beyonce.npy
+  Morgan Freeman: dirs/morgan.npy
+  Avatar: dirs/avatar.npy
+  Wolverine: dirs/wolverine.npy
+  Grindelwald: dirs/grindelwald.npy
+  Dumbledore: dirs/dumbledore.npy
+  Gargamel: dirs/gargamel.npy
+  Ed Sheeran: dirs/ed.npy
+  Zendaya: dirs/zendaya.npy
+  Moana: dirs/moana.npy
+  Megan Fox: dirs/megan.npy
+  Thanos: dirs/thanos.npy
+
+targets:
+  Elsa: dirs/targets/elsa.jpg
+  Pocahontas: dirs/targets/pocahontas.jpg
+  Keanu Reeves: dirs/targets/keanu.jpg
+  Trump: dirs/targets/trump.jpg
+  Joker: dirs/targets/joker.jpg
+  Ariel: dirs/targets/ariel.jpeg
+  Doc Brown: dirs/targets/doc_brown.jpg
+  Beyonce: dirs/targets/beyonce.jpg
+  Grindelwald: dirs/targets/grindelwald.jpg
+  Dumbledore: dirs/targets/dumbledore.jpg
+  Morgan Freeman: dirs/targets/morgan_freeman.jpg
+  Avatar: dirs/targets/avatar.jpg
+  Wolverine: dirs/targets/wolverine.jpg
+  Gargamel: dirs/targets/Gargamel.png
+  Ed Sheeran: dirs/targets/ed_sheeran.jpg
+  Zendaya: dirs/targets/zendaya_2.jpg
+  Moana: dirs/targets/moana.jpg
+  Megan Fox: dirs/targets/megan.jpg
+  Thanos: dirs/targets/thanos.jpg

@@ -7,12 +7,13 @@ from torchvision.transforms import v2
 
 
 class BaseDataset(torch.utils.data.Dataset):
-    def __init__(self, root_path):
+    def __init__(self, root_path, size=1024):
         super().__init__()
         assert os.path.exists(root_path), "Root path to dataset doesn't exist"
         self.root_path = Path(root_path)
         self.paths = self._find_paths(self.root_path)
         self.transform = v2.Compose([
+            v2.Resize((size, size)),
             v2.ToImage(),
             v2.ToDtype(torch.float32, scale=True),
             v2.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))

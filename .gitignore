@@ -5,3 +5,4 @@ saved/*
 wandb/*
 **/.ipynb_checkpoints/
 **/pretrained/
+eval/*
