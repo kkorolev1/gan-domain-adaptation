@@ -286,7 +286,7 @@ class Trainer:
                 self.writer.add_scalar(
                     "learning rate", self.lr_scheduler_encoder.get_last_lr()[0]
                 )
-                self._log_predictions(**batch, batch_idx=batch_idx, is_train=False)
+                self._log_predictions(**batch, is_train=False)
                 self._log_scalars(self.train_metrics)
                 # we don't want to reset train metrics at the start of every epoch
                 # because we are interested in recent train metrics
@@ -310,7 +310,10 @@ class Trainer:
 
         domain_img = batch["domain_img"]
         latents = torch.randn(domain_img.shape[0], self.generator.style_dim, requires_grad=False, device=self.device)
-        d = self.domain_encoder(domain_img)
+        domain_img_transform = v2.Compose([
+            v2.Resize((224, 224))
+        ])
+        d = self.domain_encoder(domain_img_transform(domain_img))
         gen_img = self.generator([latents], d)[0]
         src_img = self.generator([latents])[0]
 
@@ -392,7 +395,7 @@ class Trainer:
                     metrics=self.evaluation_metrics,
                     is_train=False
                 )
-                self._log_predictions(**batch, batch_idx=batch_idx, is_train=False)
+                self._log_predictions(**batch, is_train=False)
             self._log_scalars(self.evaluation_metrics)
 
         # add histogram of model parameters to the tensorboard
@@ -405,7 +408,6 @@ class Trainer:
             domain_img: torch.tensor,
             gen_img,
             src_img,
-            batch_idx=None,
             is_train=True,
             examples_to_log=3,
             *args,

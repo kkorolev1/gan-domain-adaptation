@@ -507,20 +507,20 @@ class Generator(BaseModel):
     def get_latent(self, input):
         return self.style(input)
 
-    def _style_space_part(self, domain_emb, index):
+    def get_domain_style_space(self, domain, index):
         """
         Returns a domain embedding in StyleSpace for specific layer
-            domain_emb: (B, style_space_dim)
+            domain: (B, style_space_dim)
             index: index of a layer in range [0, 17]
         """
         start = self.style_space_dim_cumsum[index - 1] if index > 0 else 0
         end = self.style_space_dim_cumsum[index]
-        return domain_emb[:, start: end]
+        return domain[:, start: end]
 
     def forward(
         self,
         styles,
-        domain_emb=None,
+        domain=None,
         return_latents=False,
         inject_index=None,
         truncation=1,
@@ -568,21 +568,22 @@ class Generator(BaseModel):
 
             latent = torch.cat([latent, latent2], 1)
 
-        if domain_emb is None:
-            domain_emb = torch.zeros((latent.shape[0], self.style_space_dim), device=latent.device)
+        if domain is None:
+            domain = torch.zeros((latent.shape[0], self.style_space_dim), device=latent.device)
+        domain_per_layers = [self.get_domain_style_space(domain, i) for i in range(self.n_latent)]
 
         out = self.input(latent)
-        out = self.conv1(out, latent[:, 0], domain=self._style_space_part(domain_emb, 0), noise=noise[0])
+        out = self.conv1(out, latent[:, 0], domain=domain_per_layers[0], noise=noise[0])
 
-        skip = self.to_rgb1(out, latent[:, 1], domain=self._style_space_part(domain_emb, 1))
+        skip = self.to_rgb1(out, latent[:, 1], domain=domain_per_layers[1])
 
         i = 1
         for conv1, conv2, noise1, noise2, to_rgb in zip(
             self.convs[::2], self.convs[1::2], noise[1::2], noise[2::2], self.to_rgbs
         ):
-            out = conv1(out, latent[:, i], domain=self._style_space_part(domain_emb, i), noise=noise1)
-            out = conv2(out, latent[:, i + 1], domain=self._style_space_part(domain_emb, i + 1), noise=noise2)
-            skip = to_rgb(out, latent[:, i + 2], domain=self._style_space_part(domain_emb, i + 2), skip=skip)
+            out = conv1(out, latent[:, i], domain=domain_per_layers[i], noise=noise1)
+            out = conv2(out, latent[:, i + 1], domain=domain_per_layers[i + 1], noise=noise2)
+            skip = to_rgb(out, latent[:, i + 2], domain=domain_per_layers[i + 2], skip=skip)
 
             i += 2
 
