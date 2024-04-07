@@ -13,9 +13,6 @@ from hydra.utils import instantiate
 from omegaconf import OmegaConf
 
 from degan.utils import prepare_device, requires_grad
-from degan.utils.object_loading import get_dataloaders
-from degan.utils.parse_config import ConfigParser
-
 
 warnings.filterwarnings("ignore", category=UserWarning)
     
@@ -38,7 +35,7 @@ def generate_mean_clip_emb(generator, clip_encoder, batch_size, n_samples, devic
         mean_emb = mean_emb + clip_encoder.encode_img(src_image_mc).sum(dim=0)
     return mean_emb / n_samples
 
-@hydra.main(version_base=None, config_path="degan/configs", config_name="precompute")
+@hydra.main(version_base=None, config_path="../../degan/configs", config_name="precompute")
 def main(config):
     OmegaConf.resolve(config)
     config = OmegaConf.to_container(config)

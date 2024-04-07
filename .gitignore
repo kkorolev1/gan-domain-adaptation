@@ -1,6 +1,6 @@
 datasets/*
 **/__pycache__/
-outputs/*
+**/outputs/
 saved/*
 wandb/*
 **/.ipynb_checkpoints/
