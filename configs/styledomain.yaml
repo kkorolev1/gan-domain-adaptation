@@ -1,7 +1,7 @@
 defaults:
   - models
+  - datasets
 
-ffhq_path: datasets/ffhq-test
 save_dir: eval/StyleDomain
 domains_dir: third_party/StyleDomain/SimilarDomains/image_domains
 

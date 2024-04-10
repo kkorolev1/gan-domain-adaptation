@@ -1,20 +1,14 @@
 defaults:
   - models
+  - datasets
 
 root_path: third_party/TargetCLIP
-ffhq_path: datasets/ffhq-test
 save_dir: eval/TargetCLIP
 
 eval_targets:
   - Dumbledore
   - Ariel
   - Trump
-
-generator:
-  size: 1024
-  style_dim: 512
-  n_mlp: 8
-  ckpt: pretrained/stylegan2-ffhq-config-f.pt
 
 dirs:
   Elsa: dirs/elsa.npy

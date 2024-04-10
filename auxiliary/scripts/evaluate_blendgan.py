@@ -1,4 +1,4 @@
-import argparse
+from tqdm import tqdm
 import os
 
 import cv2
@@ -29,17 +29,17 @@ def main(config):
 
     g_config = config["generator"]
 
-    checkpoint = torch.load(g_config["ckpt"])
+    checkpoint = torch.load(config["pretrained"]["blendgan"])
     model_dict = checkpoint['g_ema']
     print('ckpt: ', g_config["ckpt"])
 
     g_ema = Generator(
-        g_config["size"], g_config["style_dim"], g_config["n_mlp"], channel_multiplier=g_config["channel_multiplier"], load_pretrained_vgg=False
+        g_config["size"], g_config["style_dim"], g_config["n_mlp"], load_pretrained_vgg=False
     ).to(device)
     g_ema.load_state_dict(model_dict)
     g_ema.eval()
 
-    psp_encoder = PSPEncoder(config["encoder"]["ckpt"], output_size=g_config["size"]).to(device)
+    psp_encoder = PSPEncoder(config["pretrained"]["e4e"], output_size=g_config["size"]).to(device)
     psp_encoder.eval()
 
     input_img_paths = sorted(glob.glob(os.path.join(config["input_img_path"], '*.*')))
@@ -47,8 +47,7 @@ def main(config):
 
     num = 0
 
-    for input_img_path in input_img_paths:
-        print(num)
+    for input_img_path in tqdm(input_img_paths):
         num += 1
 
         name_in = os.path.splitext(os.path.basename(input_img_path))[0]
@@ -73,8 +72,6 @@ def main(config):
             save_dir = os.path.join(config["save_dir"], name_style)
             os.makedirs(save_dir, exist_ok=True)
             cv2.imwrite(os.path.join(save_dir, f'{name_in}.png'), out)
-
-    print('Done!')
 
 
 if __name__ == '__main__':

@@ -16,18 +16,18 @@ from degan.datasets import FFHQDataset
 from degan.utils import get_concat_h
 
 
-def load_generator(config):
+def load_generator(config, ckpt):
     g_ema = Generator(config["size"], config["style_dim"], config["n_mlp"])
-    g_ema.load_state_dict(torch.load(config["ckpt"])["g_ema"], strict=False)
+    g_ema.load_state_dict(torch.load(ckpt)["g_ema"], strict=False)
     g_ema.eval()
     g_ema = g_ema.cuda()
     print("Generator successfully loaded")
     return g_ema
 
-def load_psp(config):
-    ckpt = torch.load(config["ckpt"], map_location='cpu')
+def load_e4e(ckpt):
+    ckpt = torch.load(ckpt, map_location='cpu')
     opts = ckpt['opts']
-    opts['checkpoint_path'] = config["ckpt"]
+    opts['checkpoint_path'] = ckpt
     opts= Namespace(**opts)
     net = pSp(opts)
     net.eval()
@@ -66,10 +66,10 @@ def main(config):
     config = OmegaConf.to_container(config)
     root_path = config["root_path"]
     
-    generator = load_generator(config["generator"])
-    encoder = load_psp(config["encoder"])
+    generator = load_generator(config["generator"], config["pretrained"]["generator"])
+    encoder = load_e4e(config["pretrained"]["e4e"])
 
-    dataset = FFHQDataset(config["ffhq_path"], 256)
+    dataset = FFHQDataset(config["ffhq_test"], 256)
     print(f"Dataset size {len(dataset)}")
 
     latents_lst = get_latents(encoder, dataset)

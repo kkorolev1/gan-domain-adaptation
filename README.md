@@ -7,7 +7,7 @@ Faculty of Computer Science, Higher School of Economics
 ...
 
 ## Training
-Training config can be found in `degan/configs`.
+Training config can be found in `configs`.
 ```shell
 python train.py
 ```

@@ -32,11 +32,11 @@ def main(config):
     OmegaConf.resolve(config)
     config = OmegaConf.to_container(config)
 
-    device = 'cuda'
-    dataset = FFHQDataset(config["ffhq_path"], 256)
+    device = "cuda"
+    dataset = FFHQDataset(config["ffhq_test"], 256)
     print(f"Dataset size {len(dataset)}")
 
-    model_path = config['encoder']['ckpt']
+    model_path = config['pretrained']['e4e']
     ckpt = torch.load(model_path, map_location='cuda:0')
     opts = ckpt['opts']
     opts['checkpoint_path'] = model_path
