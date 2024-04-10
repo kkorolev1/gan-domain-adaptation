@@ -1,0 +1,13 @@
+defaults:
+  - models
+
+save_dir: eval/BlendGAN
+style_img_path: datasets/aahq-test
+input_img_path: datasets/ffhq-test
+
+generator:
+  size: 1024
+  style_dim: 512
+  n_mlp: 8
+  channel_multiplier: 2
+  ckpt: pretrained/blendgan.pt

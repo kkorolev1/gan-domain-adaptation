@@ -1,0 +1,10 @@
+defaults:
+  - models
+
+ffhq_path: datasets/ffhq-test
+save_dir: eval/StyleDomain
+domains_dir: third_party/StyleDomain/SimilarDomains/image_domains
+
+eval_targets:
+  - sketch
+  - anastasia

@@ -17,3 +17,6 @@ clip_encoder:
 
 pretrained:
   generator: pretrained/stylegan2-ffhq-config-f.pt
+
+encoder:
+  ckpt: pretrained/e4e_ffhq_encode.pt

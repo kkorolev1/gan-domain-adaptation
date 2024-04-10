@@ -1,3 +1,6 @@
+defaults:
+  - models
+
 root_path: third_party/TargetCLIP
 ffhq_path: datasets/ffhq-test
 save_dir: eval/TargetCLIP
@@ -12,9 +15,6 @@ generator:
   style_dim: 512
   n_mlp: 8
   ckpt: pretrained/stylegan2-ffhq-config-f.pt
-
-encoder:
-  ckpt: third_party/encoder4editing/e4e_ffhq_encode.pt
 
 dirs:
   Elsa: dirs/elsa.npy
