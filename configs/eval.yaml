@@ -1,0 +1,5 @@
+defaults:
+  - models
+  
+n_gpu: 1
+eval_dir: eval/StyleDomain
