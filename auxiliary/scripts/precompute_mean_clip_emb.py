@@ -35,7 +35,7 @@ def generate_mean_clip_emb(generator, clip_encoder, batch_size, n_samples, devic
         mean_emb = mean_emb + clip_encoder.encode_img(src_image_mc).sum(dim=0)
     return mean_emb / n_samples
 
-@hydra.main(version_base=None, config_path="../../degan/configs", config_name="precompute")
+@hydra.main(version_base=None, config_path="../../configs", config_name="precompute")
 def main(config):
     OmegaConf.resolve(config)
     config = OmegaConf.to_container(config)

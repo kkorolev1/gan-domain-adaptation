@@ -60,7 +60,7 @@ def run_g_on_latents(g_ema, latents_lst, direction, target_img, save_dir, alpha=
         result_img = get_concat_h(get_concat_h(source_img, target_img), stylized_img)
         result_img.save(os.path.join(save_dir, f"{i + 1}.png"))
 
-@hydra.main(version_base=None, config_path="configs", config_name="target_clip")
+@hydra.main(version_base=None, config_path="../../configs", config_name="target_clip")
 def main(config):
     OmegaConf.resolve(config)
     config = OmegaConf.to_container(config)
