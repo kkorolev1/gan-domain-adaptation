@@ -1,8 +1,10 @@
 from degan.base.base_metric import BaseMetric
-from degan.metric.semantic_score import SemanticScore
-from degan.metric.diversity_score import DiversityScore
+from degan.metric.semantic_score import SemanticScore, MeanSemanticScore
+from degan.metric.diversity_score import DiversityScore, MeanDiversityScore
 
 __all__ = [
     "SemanticScore",
-    "DiversityScore"
+    "DiversityScore",
+    "MeanSemanticScore",
+    "MeanDiversityScore"
 ]
