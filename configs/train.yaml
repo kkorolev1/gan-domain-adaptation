@@ -6,33 +6,55 @@ n_gpu: 1
 
 optimizer_encoder:
   _target_: torch.optim.Adam
-  lr: 1e-4
+  lr: 5e-4
 
 lr_scheduler_encoder:
-  _target_: degan.utils.lr_scheduler.CosineAnnealingWithWarmupLR
-  warmup_steps: 1000
-  max_steps: 4000
+  _target_: torch.optim.lr_scheduler.ExponentialLR
+  gamma: 1
 
-batch_size: 8
+batch_size: 4
 
-metrics: []
+metrics:
+  - _target_: degan.metric.MeanSemanticScore
+    name: MeanSemanticScore
+  - _target_: degan.metric.MeanDiversityScore
+    name: MeanDiversityScore
 
 loss:
   _target_: degan.loss.DELoss
+
+transform:
+  _target_: torchvision.transforms.v2.Compose
+  transforms:
+    - _target_: torchvision.transforms.v2.Resize
+      size: [1024, 1024]
+    - _target_: torchvision.transforms.v2.ToImage
+    - _target_: torchvision.transforms.v2.ToDtype
+      dtype: 
+        _target_: degan.utils.types.TorchFloat32
+      scale: True
+    - _target_: torchvision.transforms.v2.Normalize
+      mean: [0.5, 0.5, 0.5]
+      std: [0.5, 0.5, 0.5]
 
 data:
   train:
     batch_size: ${batch_size}
     num_workers: 5
     datasets:
-      - _target_: degan.datasets.AAHQDataset
-        root_path: datasets/aahq-dataset/aligned
+      - _target_: degan.datasets.DomainLatentDataset
+        root_path: datasets/train
+        domain_limit: 20000
+        merge_all: False
+        transform: ${transform}
   val:
     batch_size: ${batch_size}
     num_workers: 5
     datasets:
-      - _target_: degan.datasets.AAHQDataset
-        root_path: datasets/aahq-test
+      - _target_: degan.datasets.DomainLatentDataset
+        root_path: datasets/val
+        merge_all: True
+        transform: ${transform}
 
 trainer: 
   epochs: 100
@@ -43,8 +65,10 @@ trainer:
   early_stop: 100
   visualize: "wandb"
   wandb_project: "degan_project"
-  wandb_run_name: "style_space"
-  len_epoch: 200
+  wandb_run_name: "VIT_indomain_angle"
+  len_epoch: 700
   grad_norm_clip: 20
+  grad_accumulation_steps: 2
+  mean_clip_emb: datasets/mean_clip_emb.pt
 
 wandb_key: 91898ab676432e8d5689a2ce4a88f7131dc1e45c

@@ -1,2 +1,32 @@
-ffhq_test: datasets/ffhq-test
-aahq_test: datasets/aahq-test
+ffhq_test:
+  _target_: degan.datasets.FFHQDataset
+  root_path: datasets/ffhq-test
+  transform:
+    _target_: torchvision.transforms.v2.Compose
+    transforms:
+      - _target_: torchvision.transforms.v2.Resize
+        size: [256, 256]
+      - _target_: torchvision.transforms.v2.ToImage
+      - _target_: torchvision.transforms.v2.ToDtype
+        dtype: 
+          _target_: degan.utils.types.TorchFloat32
+        scale: True
+      - _target_: torchvision.transforms.v2.Normalize
+        mean: [0.5, 0.5, 0.5]
+        std: [0.5, 0.5, 0.5]
+aahq_test:
+  _target_: degan.datasets.AAHQDataset
+  root_path: datasets/aahq-test
+  transform:
+    _target_: torchvision.transforms.v2.Compose
+    transforms:
+      - _target_: torchvision.transforms.v2.Resize
+        size: [256, 256]
+      - _target_: torchvision.transforms.v2.ToImage
+      - _target_: torchvision.transforms.v2.ToDtype
+        dtype: 
+          _target_: degan.utils.types.TorchFloat32
+        scale: True
+      - _target_: torchvision.transforms.v2.Normalize
+        mean: [0.5, 0.5, 0.5]
+        std: [0.5, 0.5, 0.5]

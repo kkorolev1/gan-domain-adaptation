@@ -12,7 +12,6 @@ from omegaconf import OmegaConf
 from argparse import Namespace
 from utils.common import tensor2im
 from models.psp import pSp
-from degan.datasets import FFHQDataset
 from degan.utils import get_concat_h
 
 
@@ -69,7 +68,7 @@ def main(config):
     generator = load_generator(config["generator"], config["pretrained"]["generator"])
     encoder = load_e4e(config["pretrained"]["e4e"])
 
-    dataset = FFHQDataset(config["ffhq_test"], 256)
+    dataset = instantiate(config["ffhq_test"])
     print(f"Dataset size {len(dataset)}")
 
     latents_lst = get_latents(encoder, dataset)

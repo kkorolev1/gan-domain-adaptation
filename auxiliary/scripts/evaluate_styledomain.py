@@ -6,6 +6,7 @@ from argparse import Namespace
 
 from torchvision.transforms import Resize
 from omegaconf import OmegaConf
+from hydra.utils import instantiate
 import hydra
 from core.utils.example_utils import (
     Inferencer, to_im
@@ -17,7 +18,6 @@ from pathlib import Path
 from collections import defaultdict
 
 from examples.draw_util import weights, IdentityEditor, StyleEditor
-from degan.datasets import FFHQDataset
 
 
 def get_concat_h(im1, im2):
@@ -33,7 +33,7 @@ def main(config):
     config = OmegaConf.to_container(config)
 
     device = "cuda"
-    dataset = FFHQDataset(config["ffhq_test"], 256)
+    dataset = instantiate(config["ffhq_test"])
     print(f"Dataset size {len(dataset)}")
 
     model_path = config['pretrained']['e4e']
