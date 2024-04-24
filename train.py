@@ -67,7 +67,8 @@ def main(config):
 
     logger.info(f'Len epoch {config["trainer"]["len_epoch"]}')
     logger.info(f'Epochs {config["trainer"]["epochs"]}')
-    logger.info(f'Dataset size {len(dataloaders["train"].dataset)}')
+    logger.info(f'Train size {len(dataloaders["train"].dataset)}')
+    logger.info(f'Val size {len(dataloaders["val"].dataset)}')
     # build optimizer, learning rate scheduler. delete every line containing lr_scheduler for
     # disabling scheduler
     trainable_params_encoder = filter(

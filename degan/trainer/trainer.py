@@ -3,6 +3,7 @@ from pathlib import Path
 from random import shuffle
 import itertools
 from glob import glob
+from collections import defaultdict
 
 from numpy import inf
 import pandas as pd
@@ -93,19 +94,17 @@ class Trainer:
             self.train_dataloader = inf_loop(self.train_dataloader)
             self.len_epoch = len_epoch
         self.evaluation_dataloaders = {k: v for k, v in dataloaders.items() if k != "train"}
-        self.log_step = 100
+        self.log_step = 50
 
         self.train_metrics = MetricTracker(
-            "loss", "grad norm",
-            *[m.name for m in self.metrics], writer=self.writer
+            "loss", "grad norm", writer=self.writer
         )
         self.evaluation_metrics = MetricTracker(
             "loss",
             *[m.name for m in self.metrics], writer=self.writer
         )
 
-        #TODO: Move this to a better place
-        self.src_emb_mc = torch.load("datasets/mean_clip_emb.pt")
+        self.src_emb_mc = torch.load(cfg_trainer["mean_clip_emb"], map_location="cpu").to(device)
 
         if config.resume is not None:
             self._resume_checkpoint(config.resume)
@@ -233,7 +232,7 @@ class Trainer:
         """
         Move all necessary tensors to the HPU
         """
-        for tensor_for_gpu in batch:
+        for tensor_for_gpu in ["domain_img", "latent"]:
             batch[tensor_for_gpu] = batch[tensor_for_gpu].to(device)
         return batch
 
@@ -256,6 +255,8 @@ class Trainer:
 
         self.train_metrics.reset()
         self.writer.add_scalar("epoch", epoch)
+        last_train_metrics = self.train_metrics.result()
+
         for batch_idx, batch in enumerate(
                 tqdm(self.train_dataloader, desc="train", total=self.len_epoch)
         ):
@@ -276,7 +277,7 @@ class Trainer:
                     continue
                 else:
                     raise e
-            if batch_idx % self.log_step == 0:
+            if batch_idx > 0 and batch_idx % self.log_step == 0:
                 self.writer.set_step((epoch - 1) * self.len_epoch + batch_idx)
                 self.logger.debug(
                     "Train Epoch: {} {} Loss: {:.6f}".format(
@@ -286,13 +287,13 @@ class Trainer:
                 self.writer.add_scalar(
                     "learning rate", self.lr_scheduler_encoder.get_last_lr()[0]
                 )
-                self._log_predictions(**batch, is_train=False)
+                self._log_predictions(**batch)
                 self._log_scalars(self.train_metrics)
                 # we don't want to reset train metrics at the start of every epoch
                 # because we are interested in recent train metrics
                 last_train_metrics = self.train_metrics.result()
                 self.train_metrics.reset()
-            if batch_idx >= self.len_epoch:
+            if batch_idx + 1 >= self.len_epoch:
                 break
         log = last_train_metrics
 
@@ -305,11 +306,8 @@ class Trainer:
 
     def process_batch(self, batch, batch_idx, metrics: MetricTracker, is_train=True):
         batch = self.move_batch_to_device(batch, self.device)
-        if is_train:
-            self.optimizer_encoder.zero_grad()
-
         domain_img = batch["domain_img"]
-        latents = torch.randn(domain_img.shape[0], self.generator.style_dim, requires_grad=False, device=self.device)
+        latents = batch["latent"]
         domain_img_transform = v2.Compose([
             v2.Resize((224, 224))
         ])
@@ -321,23 +319,24 @@ class Trainer:
         src_emb = self.clip_encoder.encode_img(src_img)
         domain_emb = self.clip_encoder.encode_img(domain_img.detach())
             
-        loss = self.criterion(d, gen_emb, src_emb, domain_emb, self.src_emb_mc)
+        loss = self.criterion(d, gen_emb, src_emb, domain_emb, self.src_emb_mc) / self.config["trainer"]["grad_accumulation_steps"]
 
         if is_train:
             loss.backward()
-            self._clip_grad_norm(self.domain_encoder)
-            self.optimizer_encoder.step()
-            self.lr_scheduler_encoder.step()
-            metrics.update("grad norm", self.get_grad_norm(self.domain_encoder))
+            if ((batch_idx + 1) % self.config["trainer"]["grad_accumulation_steps"] == 0) or (batch_idx + 1 == self.len_epoch):
+                # self._clip_grad_norm(self.domain_encoder)
+                self.optimizer_encoder.step()
+                self.lr_scheduler_encoder.step()
+                metrics.update("grad norm", self.get_grad_norm(self.domain_encoder))
+                self.optimizer_encoder.zero_grad()
 
         batch["loss"] = loss
         metrics.update("loss", batch["loss"].item())
         
         batch["gen_img"] = gen_img
         batch["src_img"] = src_img
-
-        for met in self.metrics:
-            metrics.update(met.name, met(**batch))
+        batch["gen_emb"] = gen_emb
+        batch["domain_emb"] = domain_emb
 
         return batch
 
@@ -383,6 +382,9 @@ class Trainer:
         self.evaluation_metrics.reset()
         with torch.no_grad():
             self.writer.set_step(epoch * self.len_epoch, part)
+            
+            keys = ["domain_img", "gen_img", "src_img", "domain_path", "gen_emb", "domain_emb"]
+            batch_dict = {key: [] for key in keys}
 
             for batch_idx, batch in tqdm(
                     enumerate(dataloader),
@@ -395,7 +397,30 @@ class Trainer:
                     metrics=self.evaluation_metrics,
                     is_train=False
                 )
-                self._log_predictions(**batch, is_train=False)
+                for key in keys:
+                    items = batch[key]
+                    if isinstance(items, torch.Tensor):
+                        items = items.cpu()
+                    batch_dict[key].append(items)
+
+            for key in ["domain_img", "gen_img", "src_img", "gen_emb", "domain_emb"]:
+                batch_dict[key] = torch.cat(batch_dict[key]).cpu()
+            batch_dict["domain_path"] = list(itertools.chain(*batch_dict["domain_path"]))
+            domain_to_gen_emb = defaultdict(list)
+            domain_to_domain_emb = defaultdict(list)
+
+            for domain, gen_emb, domain_emb in zip(batch_dict["domain_path"], batch_dict["gen_emb"], batch_dict["domain_emb"]):
+                domain_to_gen_emb[domain].append(gen_emb.unsqueeze(0))
+                domain_to_domain_emb[domain] = domain_emb
+
+            for domain in domain_to_gen_emb:
+                domain_to_gen_emb[domain] = torch.cat(domain_to_gen_emb[domain], dim=0).to(self.device)
+                domain_to_domain_emb[domain] = domain_to_domain_emb[domain].to(self.device)
+
+            for met in self.metrics:
+                self.evaluation_metrics.update(met.name, met(domain_to_gen_emb, domain_to_domain_emb))
+
+            self._log_predictions(**batch_dict)
             self._log_scalars(self.evaluation_metrics)
 
         # add histogram of model parameters to the tensorboard
@@ -405,11 +430,10 @@ class Trainer:
     
     def _log_predictions(
             self,
-            domain_img: torch.tensor,
+            domain_img,
             gen_img,
             src_img,
-            is_train=True,
-            examples_to_log=3,
+            examples_to_log=15,
             *args,
             **kwargs
     ):
@@ -424,9 +448,14 @@ class Trainer:
 
         indices = list(range(domain_img.shape[0]))
         shuffle(indices)
-        examples_to_log = min(domain_img.shape[0], examples_to_log)
         indices = indices[:examples_to_log]
 
-        for i, index in enumerate(indices):
-            grid = make_grid([domain_img[index], gen_img[index], src_img[index]], nrow=3, value_range=(-1, 1), normalize=True)
-            self.writer.add_image(f"grid_{i + 1}", transform(grid.cpu()))
+        domain_img = domain_img[indices]
+        src_img = src_img[indices]
+        gen_img = gen_img[indices]
+
+        stack = torch.cat([domain_img, src_img, gen_img], dim=0)
+        grid = make_grid(stack, nrow=domain_img.shape[0], normalize=True, value_range=(-1, 1))
+        image = transform(grid.cpu())
+
+        self.writer.add_image("grid", image)
