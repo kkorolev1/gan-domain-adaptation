@@ -101,6 +101,10 @@ def get_concat_h(im1, im2):
     dst.paste(im2, (im1.width, 0))
     return dst
 
+def get_tril_mask(size):
+    mask = torch.ones((size, size), dtype=torch.bool)
+    return torch.tril(mask).logical_not()
+
 class MetricTracker:
     def __init__(self, *keys, writer=None):
         self.writer = writer
