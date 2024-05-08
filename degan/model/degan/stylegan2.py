@@ -480,10 +480,7 @@ class Generator(BaseModel):
             in_channel = out_channel
 
         self.n_latent = self.log_size * 2 - 2
-        
-        out_channels = list(self.channels.values())
-        self.style_space_dim_cumsum = np.cumsum(np.stack((out_channels, out_channels), axis=1).flatten())
-        self.style_space_dim = self.style_space_dim_cumsum[-1]
+        self.style_space_dim = 6080
 
     def make_noise(self):
         device = self.input.input.device
@@ -507,20 +504,10 @@ class Generator(BaseModel):
     def get_latent(self, input):
         return self.style(input)
 
-    def get_domain_style_space(self, domain, index):
-        """
-        Returns a domain embedding in StyleSpace for specific layer
-            domain: (B, style_space_dim)
-            index: index of a layer in range [0, 17]
-        """
-        start = self.style_space_dim_cumsum[index - 1] if index > 0 else 0
-        end = self.style_space_dim_cumsum[index]
-        return domain[:, start: end]
-
     def forward(
         self,
         styles,
-        domain=None,
+        domain_chunks=None,
         return_latents=False,
         inject_index=None,
         truncation=1,
@@ -568,22 +555,21 @@ class Generator(BaseModel):
 
             latent = torch.cat([latent, latent2], 1)
 
-        if domain is None:
-            domain = torch.zeros((latent.shape[0], self.style_space_dim), device=latent.device)
-        domain_per_layers = [self.get_domain_style_space(domain, i) for i in range(self.n_latent)]
+        if domain_chunks is None:
+            domain_chunks = [None] * self.n_latent
 
         out = self.input(latent)
-        out = self.conv1(out, latent[:, 0], domain=domain_per_layers[0], noise=noise[0])
+        out = self.conv1(out, latent[:, 0], domain=domain_chunks[0], noise=noise[0])
 
-        skip = self.to_rgb1(out, latent[:, 1], domain=domain_per_layers[1])
+        skip = self.to_rgb1(out, latent[:, 1], domain=domain_chunks[1])
 
         i = 1
         for conv1, conv2, noise1, noise2, to_rgb in zip(
             self.convs[::2], self.convs[1::2], noise[1::2], noise[2::2], self.to_rgbs
         ):
-            out = conv1(out, latent[:, i], domain=domain_per_layers[i], noise=noise1)
-            out = conv2(out, latent[:, i + 1], domain=domain_per_layers[i + 1], noise=noise2)
-            skip = to_rgb(out, latent[:, i + 2], domain=domain_per_layers[i + 2], skip=skip)
+            out = conv1(out, latent[:, i], domain=domain_chunks[i], noise=noise1)
+            out = conv2(out, latent[:, i + 1], domain=domain_chunks[i + 1], noise=noise2)
+            skip = to_rgb(out, latent[:, i + 2], domain=domain_chunks[i + 2], skip=skip)
 
             i += 2
 
@@ -594,130 +580,3 @@ class Generator(BaseModel):
 
         else:
             return image, None
-
-
-class ConvLayer(nn.Sequential):
-    def __init__(
-        self,
-        in_channel,
-        out_channel,
-        kernel_size,
-        downsample=False,
-        blur_kernel=[1, 3, 3, 1],
-        bias=True,
-        activate=True,
-    ):
-        layers = []
-
-        if downsample:
-            factor = 2
-            p = (len(blur_kernel) - factor) + (kernel_size - 1)
-            pad0 = (p + 1) // 2
-            pad1 = p // 2
-
-            layers.append(Blur(blur_kernel, pad=(pad0, pad1)))
-
-            stride = 2
-            self.padding = 0
-
-        else:
-            stride = 1
-            self.padding = kernel_size // 2
-
-        layers.append(
-            EqualConv2d(
-                in_channel,
-                out_channel,
-                kernel_size,
-                padding=self.padding,
-                stride=stride,
-                bias=bias and not activate,
-            )
-        )
-
-        if activate:
-            layers.append(FusedLeakyReLU(out_channel, bias=bias))
-
-        super().__init__(*layers)
-
-
-class ResBlock(nn.Module):
-    def __init__(self, in_channel, out_channel, blur_kernel=[1, 3, 3, 1]):
-        super().__init__()
-
-        self.conv1 = ConvLayer(in_channel, in_channel, 3)
-        self.conv2 = ConvLayer(in_channel, out_channel, 3, downsample=True)
-
-        self.skip = ConvLayer(
-            in_channel, out_channel, 1, downsample=True, activate=False, bias=False
-        )
-
-    def forward(self, input):
-        out = self.conv1(input)
-        out = self.conv2(out)
-
-        skip = self.skip(input)
-        out = (out + skip) / math.sqrt(2)
-
-        return out
-
-
-class Discriminator(nn.Module):
-    def __init__(self, size, channel_multiplier=2, blur_kernel=[1, 3, 3, 1]):
-        super().__init__()
-
-        channels = {
-            4: 512,
-            8: 512,
-            16: 512,
-            32: 512,
-            64: 256 * channel_multiplier,
-            128: 128 * channel_multiplier,
-            256: 64 * channel_multiplier,
-            512: 32 * channel_multiplier,
-            1024: 16 * channel_multiplier,
-        }
-
-        convs = [ConvLayer(3, channels[size], 1)]
-
-        log_size = int(math.log(size, 2))
-
-        in_channel = channels[size]
-
-        for i in range(log_size, 2, -1):
-            out_channel = channels[2 ** (i - 1)]
-
-            convs.append(ResBlock(in_channel, out_channel, blur_kernel))
-
-            in_channel = out_channel
-
-        self.convs = nn.Sequential(*convs)
-
-        self.stddev_group = 4
-        self.stddev_feat = 1
-
-        self.final_conv = ConvLayer(in_channel + 1, channels[4], 3)
-        self.final_linear = nn.Sequential(
-            EqualLinear(channels[4] * 4 * 4, channels[4], activation="fused_lrelu"),
-            EqualLinear(channels[4], 1),
-        )
-
-    def forward(self, input):
-        out = self.convs(input)
-
-        batch, channel, height, width = out.shape
-        group = min(batch, self.stddev_group)
-        stddev = out.view(
-            group, -1, self.stddev_feat, channel // self.stddev_feat, height, width
-        )
-        stddev = torch.sqrt(stddev.var(0, unbiased=False) + 1e-8)
-        stddev = stddev.mean([2, 3, 4], keepdims=True).squeeze(2)
-        stddev = stddev.repeat(group, 1, height, width)
-        out = torch.cat([out, stddev], 1)
-
-        out = self.final_conv(out)
-
-        out = out.view(batch, -1)
-        out = self.final_linear(out)
-
-        return out
