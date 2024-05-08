@@ -12,6 +12,8 @@ class DomainLatentDataset(torch.utils.data.Dataset):
     def __init__(self, root_path, limit=None, domain_limit=None, latent_limit=None, merge_all=False, transform=None, sample_latent=False):
         super().__init__()
         assert os.path.exists(root_path), "Root path to dataset doesn't exist"
+        seed(DomainLatentDataset.SEED)
+
         self.root_path = Path(root_path)
         
         domains_paths = self._truncate_paths(self._find_domains(self.root_path), domain_limit)
@@ -21,26 +23,27 @@ class DomainLatentDataset(torch.utils.data.Dataset):
         if merge_all:
             for domain_path in domains_paths:
                 for latent_path in latents_paths:
-                    paths.append({
-                        "domain_path": domain_path,
-                        "latent_path": latent_path
-                    })
+                    paths.append(self._create_path_mapping(domain_path, latent_path, sample_latent))
         else:
             for domain_path in domains_paths:
-                latent_path = choice(latents_paths)
-                paths.append({
-                    "domain_path": domain_path,
-                    "latent_path": latent_path
-                })
+                latent_path = choice(latents_paths) if len(latents_paths) > 0 else None
+                paths.append(self._create_path_mapping(domain_path, latent_path, sample_latent))
     
         self.paths = self._truncate_paths(paths, limit)
         self.transform = transform
         self.sample_latent = sample_latent
     
+    def _create_path_mapping(self, domain_path, latent_path, sample_latent=False):
+        mapping = {
+            "domain_path": domain_path
+        }
+        if not sample_latent:
+            mapping["latent_path"] = latent_path
+        return mapping
+
     def _truncate_paths(self, paths, limit):
         if limit is None:
             return paths
-        seed(DomainLatentDataset.SEED)
         shuffle(paths)
         return paths[:limit]
 

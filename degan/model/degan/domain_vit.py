@@ -83,8 +83,10 @@ class EncoderBlock(nn.Module):
         if domain_dim is not None:
             self.domain_proj = nn.Sequential(
                 nn.Linear(hidden_dim, hidden_dim),
+                nn.LayerNorm(hidden_dim),
                 nn.GELU(),
                 nn.Linear(hidden_dim, hidden_dim),
+                nn.LayerNorm(hidden_dim),
                 nn.GELU(),
                 nn.Linear(hidden_dim, domain_dim)
             )

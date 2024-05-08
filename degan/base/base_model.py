@@ -1,10 +1,11 @@
 from abc import abstractmethod
 from typing import Union
 
+import torch
 import numpy as np
 import torch.nn as nn
 from torch import Tensor
-
+from degan.utils import nan_hook
 
 class BaseModel(nn.Module):
     """
@@ -13,6 +14,9 @@ class BaseModel(nn.Module):
 
     def __init__(self):
         super().__init__()
+
+        # for submodule in self.modules():
+        #     submodule.register_forward_hook(nan_hook)
 
     @abstractmethod
     def forward(self, **batch) -> Union[Tensor, dict]:
@@ -31,3 +35,5 @@ class BaseModel(nn.Module):
         model_parameters = filter(lambda p: p.requires_grad, self.parameters())
         params = sum([np.prod(p.size()) for p in model_parameters])
         return super().__str__() + "\nTrainable parameters: {}".format(params)
+
+ 

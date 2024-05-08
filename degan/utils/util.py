@@ -105,6 +105,17 @@ def get_tril_mask(size):
     mask = torch.ones((size, size), dtype=torch.bool)
     return torch.tril(mask).logical_not()
 
+def nan_hook(self, inp, output):
+    if isinstance(output, torch.Tensor):
+        output = [output]
+    for i, out in enumerate(output):
+        if not isinstance(out, torch.Tensor):
+            continue
+        nan_mask = torch.isnan(out)
+        if nan_mask.any():
+            print("In", self.__class__.__name__)
+            raise RuntimeError(f"Found NAN in output {i} at indices: ", nan_mask.nonzero(), "where:", out[nan_mask.nonzero()[:, 0].unique(sorted=True)])
+
 class MetricTracker:
     def __init__(self, *keys, writer=None):
         self.writer = writer
