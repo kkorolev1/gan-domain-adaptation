@@ -9,7 +9,7 @@ generator:
 
 domain_encoder:
   _target_: degan.model.DomainEncoder
-  domain_dim: ${domain_dim}
+  freeze_transformer: True
 
 clip_encoder:
   _target_: degan.model.CLIP

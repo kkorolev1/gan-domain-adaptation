@@ -12,7 +12,7 @@ lr_scheduler_encoder:
   _target_: torch.optim.lr_scheduler.ExponentialLR
   gamma: 0.9999
 
-batch_size: 4
+batch_size: 1
 
 metrics:
   - _target_: degan.metric.MeanSemanticScore
@@ -47,16 +47,18 @@ data:
     datasets:
       - _target_: degan.datasets.DomainLatentDataset
         root_path: datasets/train
-        domain_limit: 20000
+        domain_limit: 1
         merge_all: False
         transform: ${transform}
         sample_latent: True
   val:
-    batch_size: ${batch_size}
+    batch_size: 5
     num_workers: 5
     datasets:
       - _target_: degan.datasets.DomainLatentDataset
-        root_path: datasets/val
+        root_path: datasets/train
+        domain_limit: 1
+        latent_limit: 15
         merge_all: True
         transform: ${transform}
         sample_latent: False
@@ -70,10 +72,10 @@ trainer:
   early_stop: 100
   visualize: "wandb"
   wandb_project: "degan_project"
-  wandb_run_name: "VIT_loss_3_mult"
+  wandb_run_name: "one_batch_test_new_encoder_bigger"
   len_epoch: 700
   grad_norm_clip: 100
-  grad_accumulation_steps: 4
+  grad_accumulation_steps: 1
   mean_clip_emb: datasets/mean_clip_emb.pt
 
 wandb_key: 91898ab676432e8d5689a2ce4a88f7131dc1e45c
