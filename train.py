@@ -27,7 +27,7 @@ torch.backends.cudnn.benchmark = True
 np.random.seed(SEED)
 
 
-@hydra.main(version_base=None, config_path="configs", config_name="train")
+@hydra.main(version_base=None, config_path="configs", config_name="one_batch_test")
 def main(config):
     OmegaConf.resolve(config)
     config = ConfigParser(OmegaConf.to_container(config))

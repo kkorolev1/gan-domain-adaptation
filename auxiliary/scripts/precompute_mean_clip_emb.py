@@ -27,6 +27,10 @@ np.random.seed(SEED)
 @torch.no_grad()
 def generate_mean_clip_emb(generator, clip_encoder, batch_size, n_samples, device):
     assert n_samples % batch_size == 0, "Number of samples must be divisible by a batch size"
+    
+    generator.eval()
+    clip_encoder.eval()
+
     n_iters = n_samples // batch_size
     mean_emb = torch.zeros(clip_encoder.emb_dim, device=device)
     for i in tqdm.trange(n_iters):
