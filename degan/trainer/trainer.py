@@ -97,10 +97,10 @@ class Trainer:
         self.log_step = 50
 
         self.train_metrics = MetricTracker(
-            "loss", "grad norm", writer=self.writer
+            "loss", "loss_direction", "loss_indomain_angle", "loss_domain_norm", "grad norm", writer=self.writer
         )
         self.evaluation_metrics = MetricTracker(
-            "loss",
+            "loss", "loss_direction", "loss_indomain_angle", "loss_domain_norm",
             *[m.name for m in self.metrics], writer=self.writer
         )
 
@@ -308,30 +308,33 @@ class Trainer:
         batch = self.move_batch_to_device(batch, self.device)
         domain_img = batch["domain_img"]
         latents = batch["latent"]
-        domain_img_transform = v2.Compose([
-            v2.Resize((224, 224))
-        ])
-        d = self.domain_encoder(domain_img_transform(domain_img))
-        gen_img = self.generator([latents], d)[0]
-        src_img = self.generator([latents])[0]
+
+        domain_outputs = self.domain_encoder(domain_img)
+        domain_offset = torch.cat(domain_outputs, dim=1)
+        gen_img, _ = self.generator([latents], domain_outputs)
+        src_img, _ = self.generator([latents])
 
         gen_emb = self.clip_encoder.encode_img(gen_img)
         src_emb = self.clip_encoder.encode_img(src_img)
-        domain_emb = self.clip_encoder.encode_img(domain_img.detach())
-            
-        loss = self.criterion(d, gen_emb, src_emb, domain_emb, self.src_emb_mc) / self.config["trainer"]["grad_accumulation_steps"]
+        domain_emb = self.clip_encoder.encode_img(domain_img)
 
+        loss_dict = self.criterion(domain_offset, gen_emb, src_emb, domain_emb, self.src_emb_mc)
+        for key, loss_value in loss_dict.items():
+            loss_dict[key] = loss_value / self.config["trainer"]["grad_accumulation_steps"]
+        loss = loss_dict["loss"]
+    
         if is_train:
             loss.backward()
             if ((batch_idx + 1) % self.config["trainer"]["grad_accumulation_steps"] == 0) or (batch_idx + 1 == self.len_epoch):
-                # self._clip_grad_norm(self.domain_encoder)
+                self._clip_grad_norm(self.domain_encoder)
                 self.optimizer_encoder.step()
                 self.lr_scheduler_encoder.step()
                 metrics.update("grad norm", self.get_grad_norm(self.domain_encoder))
                 self.optimizer_encoder.zero_grad()
-
-        batch["loss"] = loss
-        metrics.update("loss", batch["loss"].item())
+        
+        batch.update(loss_dict)
+        for key, loss_value in loss_dict.items():
+            metrics.update(key, batch[key].item())
         
         batch["gen_img"] = gen_img
         batch["src_img"] = src_img
@@ -439,7 +442,7 @@ class Trainer:
     ):
         if self.writer is None:
             return
-
+        domain_img = domain_img.clip(-1, 1)
         gen_img = gen_img.clip(-1, 1)
         src_img = src_img.clip(-1, 1)
         transform = v2.Compose([
