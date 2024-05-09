@@ -19,13 +19,13 @@ class DELoss(nn.Module):
 
         cos_sim = torch.einsum("ij,ij->i", domain_dir_pred_norm, domain_dir_norm)
 
-        loss_direction = self.mult_direction * (1 - cos_sim).sum()
+        loss_direction = self.mult_direction * (1 - cos_sim).mean()
         
         gen_gram = gen_emb @ gen_emb.T
         src_gram = src_emb @ src_emb.T
-        loss_indomain_angle = self.mult_indomain_angle * ((gen_gram - src_gram) ** 2).sum()
+        loss_indomain_angle = self.mult_indomain_angle * ((gen_gram - src_gram) ** 2).sum(dim=1).mean()
 
-        loss_domain_norm = self.mult_domain_norm * ((domain_offset - 1) ** 2).sum()
+        loss_domain_norm = self.mult_domain_norm * ((domain_offset - 1) ** 2).sum(dim=1).mean()
         loss = loss_direction + loss_indomain_angle + loss_domain_norm
         return {
             "loss_direction": loss_direction,
