@@ -55,10 +55,11 @@ def find_device():
     return device
 
 
-def prepare_device(n_gpu_use, logger):
+def prepare_device(gpus, logger, find_best=False):
     """
     setup GPU device if available. get gpu device indices which are used for DataParallel
     """
+    n_gpu_use = len(gpus)
     n_gpu = torch.cuda.device_count()
     logger.info(f"Num GPUs query: {n_gpu_use}")
     logger.info(f"Num GPUs available: {n_gpu}")
@@ -68,6 +69,7 @@ def prepare_device(n_gpu_use, logger):
             "training will be performed on CPU."
         )
         n_gpu_use = 0
+        gpus = []
     if n_gpu_use > n_gpu:
         logger.info(
             f"Warning: The number of GPU's configured to use is {n_gpu_use}, but only {n_gpu} are "
@@ -75,13 +77,11 @@ def prepare_device(n_gpu_use, logger):
         )
         n_gpu_use = n_gpu
     if n_gpu_use == 1:
-        id = find_device()
+        id = find_device() if find_best else gpus[0]
         device = torch.device(f"cuda:{id}")
-        list_ids = [id]
     else:
         device = torch.device("cuda" if n_gpu_use > 0 else "cpu")
-        list_ids = list(range(n_gpu_use))
-    return device, list_ids
+    return device, gpus
 
 
 def requires_grad(model, requires=False):
