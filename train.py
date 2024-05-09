@@ -27,10 +27,10 @@ torch.backends.cudnn.benchmark = True
 np.random.seed(SEED)
 
 
-@hydra.main(version_base=None, config_path="configs", config_name="one_batch_test")
+@hydra.main(version_base=None, config_path="configs", config_name="train")
 def main(config):
     OmegaConf.resolve(config)
-    config = ConfigParser(OmegaConf.to_container(config))
+    config = ConfigParser(OmegaConf.to_container(config), resume=config.get("resume", None))
 
     logger = logging.getLogger("train")
 
@@ -52,7 +52,7 @@ def main(config):
     logger.info(clip_encoder)
 
     # prepare for (multi-device) GPU training
-    device, device_ids = prepare_device(config["n_gpu"], logger)
+    device, device_ids = prepare_device(config["gpus"], logger)
     logger.info(f"Device {device} Ids {device_ids}")
     generator = generator.to(device)
     domain_encoder = domain_encoder.to(device)
@@ -64,7 +64,7 @@ def main(config):
         instantiate(metric_dict)
         for metric_dict in config["metrics"]
     ]
-
+    
     logger.info(f'Len epoch {config["trainer"]["len_epoch"]}')
     logger.info(f'Epochs {config["trainer"]["epochs"]}')
     logger.info(f'Train size {len(dataloaders["train"].dataset)}')
@@ -75,7 +75,12 @@ def main(config):
         lambda p: p.requires_grad, domain_encoder.parameters())
     optimizer_encoder = instantiate(
         config["optimizer_encoder"], trainable_params_encoder)
-    lr_scheduler_encoder = instantiate(config["lr_scheduler_encoder"], optimizer_encoder)
+    lr_scheduler_encoder = instantiate(config["lr_scheduler_encoder"], optimizer=optimizer_encoder)
+    if "warmup_scheduler" in config:
+        lr_scheduler_encoder = instantiate(config["warmup_scheduler"], optimizer=optimizer_encoder, lr_scheduler=lr_scheduler_encoder)
+    ema = None
+    if "ema" in config:
+        ema = instantiate(config["ema"], model=domain_encoder, include_online_model=False)
     trainer = Trainer(
         generator,
         domain_encoder,
@@ -87,6 +92,7 @@ def main(config):
         config=config,
         device=device,
         dataloaders=dataloaders,
+        ema=ema,
         len_epoch=config["trainer"].get("len_epoch", None)
     )
 

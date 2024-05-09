@@ -35,6 +35,7 @@ class Trainer:
             config,
             device,
             dataloaders,
+            ema=None,
             len_epoch=None,
             skip_oom=True
     ):
@@ -84,7 +85,6 @@ class Trainer:
         )
 
         self.skip_oom = skip_oom
-        self.config = config
         self.train_dataloader = dataloaders["train"]
         if len_epoch is None:
             # epoch-based training
@@ -105,6 +105,9 @@ class Trainer:
         )
 
         self.src_emb_mc = torch.load(cfg_trainer["mean_clip_emb"], map_location="cpu").to(device)
+    
+        self.use_ema = ema is not None
+        self.ema = ema
 
         if config.resume is not None:
             self._resume_checkpoint(config.resume)
@@ -181,15 +184,26 @@ class Trainer:
         :param epoch: current epoch number
         :param save_best: if True, rename the saved checkpoint to 'model_best.pth'
         """
-
         state = {
             "epoch": epoch,
             "state_dict_encoder": self.domain_encoder.state_dict(),
             "optimizer_encoder": self.optimizer_encoder.state_dict(),
-            "lr_scheduler_encoder": self.lr_scheduler_encoder.state_dict(),
             "monitor_best": self.mnt_best,
             "config": self.config,
         }
+        if "warmup_scheduler" in self.config:
+            state.update({
+                "lr_scheduler_encoder": self.lr_scheduler_encoder.lr_scheduler.state_dict(),
+                "warmup_lr_scheduler_encoder": self.lr_scheduler_encoder.state_dict()
+            })
+        else:
+            state.update({
+                "lr_scheduler_encoder": self.lr_scheduler_encoder.state_dict()
+            })
+        if self.use_ema:
+            state.update({
+                "ema": self.ema.state_dict()
+            })
         filename = str(self.checkpoint_dir / "checkpoint-epoch{}.pth".format(epoch))
         if not (only_best and save_best):
             # for ckpt_path in glob(str(self.checkpoint_dir / "checkpoint-epoch*.pth")):
@@ -221,7 +235,15 @@ class Trainer:
 
         if not self.reset_scheduler:
             self.logger.info("Loading scheduler state")
-            self.lr_scheduler_encoder.load_state_dict(checkpoint["lr_scheduler_encoder"])
+            if "warmup_scheduler" in self.config:
+                self.lr_scheduler_encoder.lr_scheduler.load_state_dict(checkpoint["lr_scheduler_encoder"])
+                self.lr_scheduler_encoder.load_state_dict(checkpoint["warmup_lr_scheduler_encoder"])
+            else:
+                self.lr_scheduler_encoder.load_state_dict(checkpoint["lr_scheduler_encoder"])
+            
+
+        if self.use_ema:
+            self.ema.load_state_dict(checkpoint["ema"])
 
         self.logger.info(
             "Checkpoint loaded. Resume training from epoch {}".format(self.start_epoch)
@@ -287,7 +309,8 @@ class Trainer:
                 self.writer.add_scalar(
                     "learning rate", self.lr_scheduler_encoder.get_last_lr()[0]
                 )
-                self._log_predictions(**batch)
+                if batch_idx % (self.len_epoch // 2) == 0:
+                    self._log_predictions(**batch)
                 self._log_scalars(self.train_metrics)
                 # we don't want to reset train metrics at the start of every epoch
                 # because we are interested in recent train metrics
@@ -304,12 +327,17 @@ class Trainer:
         return log
 
 
-    def process_batch(self, batch, batch_idx, metrics: MetricTracker, is_train=True):
+    def process_batch(self, batch, batch_idx, metrics: MetricTracker, is_train=True, use_ema_encoder=False):
         batch = self.move_batch_to_device(batch, self.device)
         domain_img = batch["domain_img"]
         latents = batch["latent"]
 
-        domain_outputs = self.domain_encoder(domain_img)
+        if is_train or not use_ema_encoder:
+            domain_encoder = self.domain_encoder
+        else:
+            domain_encoder = self.ema
+
+        domain_outputs = domain_encoder(domain_img)
         domain_offset = torch.cat(domain_outputs, dim=1)
         gen_img, _ = self.generator([latents], domain_outputs)
         src_img, _ = self.generator([latents])
@@ -330,6 +358,8 @@ class Trainer:
                 self.optimizer_encoder.step()
                 self.lr_scheduler_encoder.step()
                 metrics.update("grad norm", self.get_grad_norm(self.domain_encoder))
+                if self.use_ema:
+                    self.ema.update()
                 self.optimizer_encoder.zero_grad()
         
         batch.update(loss_dict)
@@ -382,6 +412,8 @@ class Trainer:
         :return: A log that contains information about validation
         """
         self.domain_encoder.eval()
+        if self.use_ema:
+            self.ema.eval()
         self.evaluation_metrics.reset()
         with torch.no_grad():
             self.writer.set_step(epoch * self.len_epoch, part)
@@ -398,27 +430,32 @@ class Trainer:
                     batch,
                     batch_idx,
                     metrics=self.evaluation_metrics,
-                    is_train=False
+                    is_train=False,
+                    use_ema_encoder=(part == "val_ema")
                 )
                 for key in keys:
                     items = batch[key]
                     if isinstance(items, torch.Tensor):
+                        # move to cpu because of the OOM
                         items = items.cpu()
                     batch_dict[key].append(items)
 
+            # Group by domain_path, because metrics are calculated per domain
+
             for key in ["domain_img", "gen_img", "src_img", "gen_emb", "domain_emb"]:
+                # move to cpu because of the OOM
                 batch_dict[key] = torch.cat(batch_dict[key]).cpu()
             batch_dict["domain_path"] = list(itertools.chain(*batch_dict["domain_path"]))
             domain_to_gen_emb = defaultdict(list)
             domain_to_domain_emb = defaultdict(list)
 
-            for domain, gen_emb, domain_emb in zip(batch_dict["domain_path"], batch_dict["gen_emb"], batch_dict["domain_emb"]):
-                domain_to_gen_emb[domain].append(gen_emb.unsqueeze(0))
-                domain_to_domain_emb[domain] = domain_emb
+            for domain_path, gen_emb, domain_emb in zip(batch_dict["domain_path"], batch_dict["gen_emb"], batch_dict["domain_emb"]):
+                domain_to_gen_emb[domain_path].append(gen_emb.unsqueeze(0))
+                domain_to_domain_emb[domain_path] = domain_emb
 
-            for domain in domain_to_gen_emb:
-                domain_to_gen_emb[domain] = torch.cat(domain_to_gen_emb[domain], dim=0).to(self.device)
-                domain_to_domain_emb[domain] = domain_to_domain_emb[domain].to(self.device)
+            for domain_path in domain_to_gen_emb:
+                domain_to_gen_emb[domain_path] = torch.cat(domain_to_gen_emb[domain_path], dim=0).to(self.device)
+                domain_to_domain_emb[domain_path] = domain_to_domain_emb[domain_path].to(self.device)
 
             for met in self.metrics:
                 self.evaluation_metrics.update(met.name, met(domain_to_gen_emb, domain_to_domain_emb))
