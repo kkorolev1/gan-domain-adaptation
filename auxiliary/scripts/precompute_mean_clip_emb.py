@@ -58,7 +58,7 @@ def main(config):
     logger.info(clip_encoder)
 
     # prepare for (multi-device) GPU training
-    device, device_ids = prepare_device(config["n_gpu"], logger)
+    device, device_ids = prepare_device(config["gpus"], logger)
     logger.info(f"Device {device} Ids {device_ids}")
     generator = generator.to(device)
     clip_encoder = clip_encoder.to(device)

@@ -61,7 +61,7 @@ def main(config):
     config = OmegaConf.to_container(config)
     logger = logging.getLogger("eval")
 
-    device, device_ids = prepare_device(config["n_gpu"], logger)
+    device, device_ids = prepare_device(config["gpus"], logger)
     logger.info(f"Device {device} Ids {device_ids}")
 
     clip_encoder = instantiate(config["clip_encoder"])
