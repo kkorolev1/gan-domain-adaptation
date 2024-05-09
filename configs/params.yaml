@@ -1,3 +1,2 @@
 img_size: 1024
 style_dim: 512
-domain_dim: 6080 # style space
