@@ -17,7 +17,7 @@ class WanDBWriter:
             if config['trainer'].get('wandb_project') is None:
                 raise ValueError("please specify project name for wandb")
 
-            code_dir = Path(__file__).parent.parent.resolve()
+            code_dir = Path(__file__).parent.parent.resolve().name
             wandb.init(
                 project=config['trainer'].get('wandb_project'),
                 name=config['trainer'].get('wandb_run_name'),
