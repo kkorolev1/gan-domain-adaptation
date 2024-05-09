@@ -3,7 +3,7 @@ from datetime import datetime
 import numpy as np
 import pandas as pd
 import wandb
-import os
+from pathlib import Path
 
 
 class WanDBWriter:
@@ -17,10 +17,12 @@ class WanDBWriter:
             if config['trainer'].get('wandb_project') is None:
                 raise ValueError("please specify project name for wandb")
 
+            code_dir = Path(__file__).parent.parent.resolve()
             wandb.init(
                 project=config['trainer'].get('wandb_project'),
                 name=config['trainer'].get('wandb_run_name'),
-                config=config.config
+                config=config.config,
+                settings=wandb.Settings(code_dir=code_dir)
             )
             self.wandb = wandb
 
