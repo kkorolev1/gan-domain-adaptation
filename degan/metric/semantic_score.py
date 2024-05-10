@@ -3,8 +3,8 @@ import numpy as np
 from degan.base.base_metric import BaseMetric
 
 class SemanticScore(BaseMetric):
-    def __init__(self, name=None, *args, **kwargs):
-        super().__init__(name, *args, **kwargs)
+    def __init__(self, name=None):
+        super().__init__(name)
 
     def __call__(self, gen_emb, domain_emb, *args, **kwargs):
         """

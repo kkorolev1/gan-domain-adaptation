@@ -4,8 +4,8 @@ from degan.base.base_metric import BaseMetric
 from degan.utils import get_tril_mask
 
 class DiversityScore(BaseMetric):
-    def __init__(self, name=None, *args, **kwargs):
-        super().__init__(name, *args, **kwargs)
+    def __init__(self, name=None):
+        super().__init__(name)
 
     def __call__(self, gen_emb, *args, **kwargs):
         """
