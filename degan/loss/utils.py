@@ -30,4 +30,14 @@ def tt_direction_loss(gen_emb, domain_emb):
     return cosine_loss(gen_delta, domain_delta)
 
 def domain_norm_loss(domain_offset):
+    """
+        domain_offset: (B, 6080)
+    """
     return ((domain_offset - 1) ** 2).sum(dim=1).mean()
+
+def clip_reconstruction_loss(gen_emb, domain_emb):
+    """
+        gen_emb: (B, D)
+        domain_emb: (B, D)
+    """
+    return cosine_loss(gen_emb, domain_emb)

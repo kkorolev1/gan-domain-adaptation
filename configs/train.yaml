@@ -32,13 +32,13 @@ loss:
   loss_modules:
     - _target_: degan.loss.DirectionLoss
       name: loss_direction
-      mult: 10
+      mult: 1
     - _target_: degan.loss.TTDirectionLoss
       name: loss_tt_direction
-      mult: 0.4
-    - _target_: degan.loss.DomainNormLoss
-      name: loss_domain_norm
-      mult: 0.001
+      mult: 1
+    - _target_: degan.loss.CLIPResonstructionLoss
+      name: loss_clip_rec
+      mult: 1
 
 transform:
   _target_: torchvision.transforms.v2.Compose
@@ -90,7 +90,7 @@ trainer:
   early_stop: 100
   visualize: "wandb"
   wandb_project: "degan_project"
-  wandb_run_name: "ViT_tt_loss_small_bs"
+  wandb_run_name: "ViT_with_rec_loss"
   len_epoch: ${len_epoch}
   grad_norm_clip: 100
   grad_accumulation_steps: 2

@@ -337,18 +337,16 @@ class Trainer:
             domain_encoder = self.ema
 
         domain_chunks = domain_encoder(domain_img)
-        domain_offset = torch.cat(domain_chunks, dim=1)
-        gen_img, _ = self.generator([latent], domain_chunks=domain_chunks)
-        src_img, _ = self.generator([latent])
+        batch["domain_offset"] = torch.cat(domain_chunks, dim=1)
+        batch["gen_img"] = self.generator([latent], domain_chunks=domain_chunks)[0]
+        batch["src_img"] = self.generator([latent])[0]
 
-        gen_emb = self.clip_encoder.encode_img(gen_img)
-        src_emb = self.clip_encoder.encode_img(src_img)
-        domain_emb = self.clip_encoder.encode_img(domain_img)
-        src_emb_proj = self.clip_encoder.encode_img(inversion_img)
+        batch["gen_emb"] = self.clip_encoder.encode_img(batch["gen_img"])
+        batch["src_emb"] = self.clip_encoder.encode_img(batch["src_img"])
+        batch["domain_emb"] = self.clip_encoder.encode_img(domain_img)
+        batch["src_emb_proj"] = self.clip_encoder.encode_img(inversion_img)
 
-        loss_dict = self.criterion(
-            domain_offset=domain_offset, gen_emb=gen_emb, src_emb=src_emb, domain_emb=domain_emb, src_emb_proj=src_emb_proj
-        )
+        loss_dict = self.criterion(**batch)
         for key, loss_value in loss_dict.items():
             loss_dict[key] = loss_value / self.config["trainer"]["grad_accumulation_steps"]
         loss = loss_dict["loss"]
@@ -367,11 +365,6 @@ class Trainer:
         batch.update(loss_dict)
         for key, loss_value in loss_dict.items():
             metrics.update(key, batch[key].item())
-        
-        batch["gen_img"] = gen_img
-        batch["src_img"] = src_img
-        batch["gen_emb"] = gen_emb
-        batch["domain_emb"] = domain_emb
 
         return batch
 
