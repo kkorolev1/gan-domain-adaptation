@@ -3,8 +3,8 @@ import numpy as np
 from degan.base.base_metric import BaseMetric
 
 class SemanticScore(BaseMetric):
-    def __init__(self, name=None):
-        super().__init__(name)
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
 
     def __call__(self, gen_emb, domain_emb, *args, **kwargs):
         """
@@ -15,8 +15,8 @@ class SemanticScore(BaseMetric):
         return cos_sim.mean().item()
     
 class MeanSemanticScore(BaseMetric):
-    def __init__(self, name=None, *args, **kwargs):
-        super().__init__(name, *args, **kwargs)
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
 
     def __call__(self, domain_to_gen_emb, domain_to_domain_emb, *args, **kwargs):
         """

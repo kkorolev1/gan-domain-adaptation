@@ -97,7 +97,8 @@ class Trainer:
         self.log_step = 50
 
         self.train_metrics = MetricTracker(
-            "loss", "grad norm", *self.criterion.loss_names, writer=self.writer
+            "loss", "grad norm", *self.criterion.loss_names,
+            *[m.name for m in self.metrics if m.iter_based], writer=self.writer
         )
         self.evaluation_metrics = MetricTracker(
             "loss", *self.criterion.loss_names,
@@ -327,24 +328,21 @@ class Trainer:
 
     def process_batch(self, batch, batch_idx, metrics: MetricTracker, is_train=True, use_ema_encoder=False):
         batch = self.move_batch_to_device(batch, self.device)
-        domain_img = batch["domain_img"]
-        inversion_img = batch["inversion_img"]
-        latent = batch["latent"]
 
         if is_train or not use_ema_encoder:
             domain_encoder = self.domain_encoder
         else:
             domain_encoder = self.ema
 
-        domain_chunks = domain_encoder(domain_img)
-        batch["domain_offset"] = torch.cat(domain_chunks, dim=1)
-        batch["gen_img"] = self.generator([latent], domain_chunks=domain_chunks)[0]
-        batch["src_img"] = self.generator([latent])[0]
+        batch["domain_chunks"] = domain_encoder(batch["domain_img"])
+        batch["domain_offset"] = torch.cat(batch["domain_chunks"], dim=1)
+        batch["gen_img"] = self.generator([batch["latent"]], domain_chunks=batch["domain_chunks"])[0]
+        batch["src_img"] = self.generator([batch["latent"]])[0]
 
         batch["gen_emb"] = self.clip_encoder.encode_img(batch["gen_img"])
         batch["src_emb"] = self.clip_encoder.encode_img(batch["src_img"])
-        batch["domain_emb"] = self.clip_encoder.encode_img(domain_img)
-        batch["src_emb_proj"] = self.clip_encoder.encode_img(inversion_img)
+        batch["domain_emb"] = self.clip_encoder.encode_img(batch["domain_img"])
+        batch["src_emb_proj"] = self.clip_encoder.encode_img(batch["inversion_img"])
 
         loss_dict = self.criterion(**batch)
         for key, loss_value in loss_dict.items():
@@ -365,6 +363,10 @@ class Trainer:
         batch.update(loss_dict)
         for key, loss_value in loss_dict.items():
             metrics.update(key, batch[key].item())
+
+        for met in self.metrics:
+            if met.iter_based:
+                metrics.update(met.name, met(**batch))
 
         return batch
 
@@ -453,7 +455,8 @@ class Trainer:
                 domain_to_domain_emb[domain_path] = domain_to_domain_emb[domain_path].to(self.device)
 
             for met in self.metrics:
-                self.evaluation_metrics.update(met.name, met(domain_to_gen_emb, domain_to_domain_emb))
+                if not met.iter_based:
+                    self.evaluation_metrics.update(met.name, met(domain_to_gen_emb, domain_to_domain_emb))
 
             self._log_predictions(**batch_dict)
             self._log_scalars(self.evaluation_metrics)

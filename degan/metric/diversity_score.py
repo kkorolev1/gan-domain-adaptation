@@ -4,8 +4,8 @@ from degan.base.base_metric import BaseMetric
 from degan.utils import get_tril_mask
 
 class DiversityScore(BaseMetric):
-    def __init__(self, name=None):
-        super().__init__(name)
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
 
     def __call__(self, gen_emb, *args, **kwargs):
         """
@@ -18,8 +18,8 @@ class DiversityScore(BaseMetric):
         return torch.mean(1 - cosine_sim[mask]).item()
     
 class MeanDiversityScore(BaseMetric):
-    def __init__(self, name=None, *args, **kwargs):
-        super().__init__(name, *args, **kwargs)
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
 
     def __call__(self, domain_to_gen_emb, *args, **kwargs):
         """

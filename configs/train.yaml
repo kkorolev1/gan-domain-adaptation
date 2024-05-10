@@ -23,7 +23,9 @@ lr_scheduler_encoder:
 
 metrics:
   - _target_: degan.metric.MeanSemanticScore
+    iter_based: False
   - _target_: degan.metric.MeanDiversityScore
+    iter_based: False
   - _target_: degan.metric.DomainOffsetNorm
     name: domain_offset_norm_0
     chunk_index: 0
