@@ -1,5 +1,8 @@
-from degan.loss.DELoss import DELoss
+from degan.loss.loss import DirectionLoss, TTDirectionLoss, DomainNormLoss, CompositeLoss
 
 __all__ = [
-    "DELoss"
+    "DirectionLoss",
+    "TTDirectionLoss",
+    "DomainNormLoss",
+    "CompositeLoss"
 ]

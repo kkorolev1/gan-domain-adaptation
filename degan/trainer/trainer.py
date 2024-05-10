@@ -97,14 +97,12 @@ class Trainer:
         self.log_step = 50
 
         self.train_metrics = MetricTracker(
-            "loss", "loss_direction", "loss_indomain_angle", "loss_domain_norm", "grad norm", writer=self.writer
+            "loss", "grad norm", *self.criterion.loss_names, writer=self.writer
         )
         self.evaluation_metrics = MetricTracker(
-            "loss", "loss_direction", "loss_indomain_angle", "loss_domain_norm",
+            "loss", *self.criterion.loss_names,
             *[m.name for m in self.metrics], writer=self.writer
         )
-
-        self.src_emb_mc = torch.load(cfg_trainer["mean_clip_emb"], map_location="cpu").to(device)
     
         self.use_ema = ema is not None
         self.ema = ema
@@ -254,7 +252,7 @@ class Trainer:
         """
         Move all necessary tensors to the HPU
         """
-        for tensor_for_gpu in ["domain_img", "latent"]:
+        for tensor_for_gpu in ["domain_img", "inversion_img", "latent"]:
             batch[tensor_for_gpu] = batch[tensor_for_gpu].to(device)
         return batch
 
@@ -330,23 +328,27 @@ class Trainer:
     def process_batch(self, batch, batch_idx, metrics: MetricTracker, is_train=True, use_ema_encoder=False):
         batch = self.move_batch_to_device(batch, self.device)
         domain_img = batch["domain_img"]
-        latents = batch["latent"]
+        inversion_img = batch["inversion_img"]
+        latent = batch["latent"]
 
         if is_train or not use_ema_encoder:
             domain_encoder = self.domain_encoder
         else:
             domain_encoder = self.ema
 
-        domain_outputs = domain_encoder(domain_img)
-        domain_offset = torch.cat(domain_outputs, dim=1)
-        gen_img, _ = self.generator([latents], domain_outputs)
-        src_img, _ = self.generator([latents])
+        domain_chunks = domain_encoder(domain_img)
+        domain_offset = torch.cat(domain_chunks, dim=1)
+        gen_img, _ = self.generator([latent], domain_chunks=domain_chunks)
+        src_img, _ = self.generator([latent])
 
         gen_emb = self.clip_encoder.encode_img(gen_img)
         src_emb = self.clip_encoder.encode_img(src_img)
         domain_emb = self.clip_encoder.encode_img(domain_img)
+        src_emb_proj = self.clip_encoder.encode_img(inversion_img)
 
-        loss_dict = self.criterion(domain_offset, gen_emb, src_emb, domain_emb, self.src_emb_mc)
+        loss_dict = self.criterion(
+            domain_offset=domain_offset, gen_emb=gen_emb, src_emb=src_emb, domain_emb=domain_emb, src_emb_proj=src_emb_proj
+        )
         for key, loss_value in loss_dict.items():
             loss_dict[key] = loss_value / self.config["trainer"]["grad_accumulation_steps"]
         loss = loss_dict["loss"]
