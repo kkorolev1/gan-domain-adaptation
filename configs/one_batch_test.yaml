@@ -2,7 +2,10 @@ defaults:
   - models
 
 name: "train"
-n_gpu: 1
+gpus: [0]
+
+batch_size: 1
+len_epoch: 1000
 
 optimizer_encoder:
   _target_: torch.optim.Adam
@@ -10,21 +13,29 @@ optimizer_encoder:
 
 lr_scheduler_encoder:
   _target_: torch.optim.lr_scheduler.ExponentialLR
-  gamma: 0.9999
+  gamma: 1
 
-batch_size: 1
+# ema:
+#   _target_: ema_pytorch.EMA
+#   beta: 0.9999
+#   update_after_step: 1
+#   update_every: 50
 
 metrics:
   - _target_: degan.metric.MeanSemanticScore
-    name: MeanSemanticScore
+    iter_based: False
   - _target_: degan.metric.MeanDiversityScore
-    name: MeanDiversityScore
+    iter_based: False
 
 loss:
-  _target_: degan.loss.DELoss
-  mult_direction: 50
-  mult_domain_norm: 0.001
-  mult_indomain_angle: 1
+  _target_: degan.loss.CompositeLoss
+  loss_modules:
+    - _target_: degan.loss.DirectionLoss
+      name: loss_direction
+      mult: 1
+    - _target_: degan.loss.TTDirectionLoss
+      name: loss_tt_direction
+      mult: 1
 
 transform:
   _target_: torchvision.transforms.v2.Compose
@@ -48,34 +59,39 @@ data:
       - _target_: degan.datasets.DomainLatentDataset
         root_path: datasets/train
         domain_limit: 1
-        merge_all: False
         transform: ${transform}
         sample_latent: True
   val:
-    batch_size: 5
+    batch_size: ${batch_size}
     num_workers: 5
     datasets:
       - _target_: degan.datasets.DomainLatentDataset
         root_path: datasets/train
-        domain_limit: 1
-        latent_limit: 15
-        merge_all: True
         transform: ${transform}
+        domain_limit: 1
+        latent_limit: 10
         sample_latent: False
+  # val_ema:
+  #   batch_size: ${batch_size}
+  #   num_workers: 5
+  #   datasets:
+  #     - _target_: degan.datasets.DomainLatentDataset
+  #       root_path: datasets/val
+  #       transform: ${transform}
+  #       sample_latent: False
 
 trainer: 
   epochs: 100
   save_dir: "saved/"
   save_period: 5
   verbosity: 2
-  monitor: "min val_loss"
+  monitor: "max val_MeanSemanticScore"
   early_stop: 100
   visualize: "wandb"
   wandb_project: "degan_project"
-  wandb_run_name: "one_batch_test_new_encoder_bigger"
-  len_epoch: 700
+  wandb_run_name: "one_batch_test"
+  len_epoch: ${len_epoch}
   grad_norm_clip: 100
-  grad_accumulation_steps: 1
-  mean_clip_emb: datasets/mean_clip_emb.pt
+  grad_accumulation_steps: 2
 
 wandb_key: 91898ab676432e8d5689a2ce4a88f7131dc1e45c

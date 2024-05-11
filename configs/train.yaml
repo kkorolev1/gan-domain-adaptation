@@ -26,60 +26,6 @@ metrics:
     iter_based: False
   - _target_: degan.metric.MeanDiversityScore
     iter_based: False
-  - _target_: degan.metric.DomainOffsetNorm
-    name: domain_offset_norm_0
-    chunk_index: 0
-  - _target_: degan.metric.DomainOffsetNorm
-    name: domain_offset_norm_1
-    chunk_index: 1
-  - _target_: degan.metric.DomainOffsetNorm
-    name: domain_offset_norm_2
-    chunk_index: 2
-  - _target_: degan.metric.DomainOffsetNorm
-    name: domain_offset_norm_3
-    chunk_index: 3
-  - _target_: degan.metric.DomainOffsetNorm
-    name: domain_offset_norm_4
-    chunk_index: 4
-  - _target_: degan.metric.DomainOffsetNorm
-    name: domain_offset_norm_5
-    chunk_index: 5
-  - _target_: degan.metric.DomainOffsetNorm
-    name: domain_offset_norm_6
-    chunk_index: 6
-  - _target_: degan.metric.DomainOffsetNorm
-    name: domain_offset_norm_7
-    chunk_index: 7
-  - _target_: degan.metric.DomainOffsetNorm
-    name: domain_offset_norm_8
-    chunk_index: 8
-  - _target_: degan.metric.DomainOffsetNorm
-    name: domain_offset_norm_9
-    chunk_index: 9
-  - _target_: degan.metric.DomainOffsetNorm
-    name: domain_offset_norm_10
-    chunk_index: 10
-  - _target_: degan.metric.DomainOffsetNorm
-    name: domain_offset_norm_11
-    chunk_index: 11
-  - _target_: degan.metric.DomainOffsetNorm
-    name: domain_offset_norm_12
-    chunk_index: 12
-  - _target_: degan.metric.DomainOffsetNorm
-    name: domain_offset_norm_13
-    chunk_index: 13
-  - _target_: degan.metric.DomainOffsetNorm
-    name: domain_offset_norm_14
-    chunk_index: 14
-  - _target_: degan.metric.DomainOffsetNorm
-    name: domain_offset_norm_15
-    chunk_index: 15
-  - _target_: degan.metric.DomainOffsetNorm
-    name: domain_offset_norm_16
-    chunk_index: 16
-  - _target_: degan.metric.DomainOffsetNorm
-    name: domain_offset_norm_17
-    chunk_index: 17
 
 loss:
   _target_: degan.loss.CompositeLoss
@@ -89,9 +35,6 @@ loss:
       mult: 1
     - _target_: degan.loss.TTDirectionLoss
       name: loss_tt_direction
-      mult: 1
-    - _target_: degan.loss.CLIPResonstructionLoss
-      name: loss_clip_rec
       mult: 1
 
 transform:
@@ -144,7 +87,7 @@ trainer:
   early_stop: 100
   visualize: "wandb"
   wandb_project: "degan_project"
-  wandb_run_name: "ViT_with_rec_loss"
+  wandb_run_name: "ViT_fix_style_space"
   len_epoch: ${len_epoch}
   grad_norm_clip: 100
   grad_accumulation_steps: 2

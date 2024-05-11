@@ -308,7 +308,7 @@ class Trainer:
                 self.writer.add_scalar(
                     "learning rate", self.lr_scheduler_encoder.get_last_lr()[0]
                 )
-                if batch_idx % (self.len_epoch // 2) == 0:
+                if batch_idx % (self.len_epoch // 4) == 0:
                     self._log_predictions(**batch)
                 self._log_scalars(self.train_metrics)
                 # we don't want to reset train metrics at the start of every epoch
@@ -334,10 +334,12 @@ class Trainer:
         else:
             domain_encoder = self.ema
 
-        batch["domain_chunks"] = domain_encoder(batch["domain_img"])
-        batch["domain_offset"] = torch.cat(batch["domain_chunks"], dim=1)
-        batch["gen_img"] = self.generator([batch["latent"]], domain_chunks=batch["domain_chunks"])[0]
-        batch["src_img"] = self.generator([batch["latent"]])[0]
+        batch["domain_offsets"] = domain_encoder(batch["domain_img"])
+        
+        s_codes = self.generator.get_s_code([batch["latent"]], input_is_latent=False)
+        s_codes_shifted = self.generator.add_in_style_space(s_codes, batch["domain_offsets"])
+        batch["gen_img"] = self.generator(s_codes_shifted, is_s_code=True)[0]
+        batch["src_img"] = self.generator(s_codes, is_s_code=True)[0]
 
         batch["gen_emb"] = self.clip_encoder.encode_img(batch["gen_img"])
         batch["src_emb"] = self.clip_encoder.encode_img(batch["src_img"])
