@@ -24,6 +24,8 @@ def tt_direction_loss(gen_emb, domain_emb):
         gen_emb: (B, D)
         domain_emb: (B, D)
     """
+    if gen_emb.shape[0] == 1:
+        return torch.zeros_like(gen_emb).mean()
     mask = get_tril_mask(gen_emb.shape[0])
     gen_delta = (gen_emb[None, :, :] - gen_emb[:, None, :])[mask]
     domain_delta = (domain_emb[None, :, :] - domain_emb[:, None, :])[mask]

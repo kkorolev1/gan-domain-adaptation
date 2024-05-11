@@ -29,8 +29,8 @@ class DomainNormLoss(BaseLoss):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
     
-    def forward(self, domain_offset, **kwargs):
-        return self.mult * domain_norm_loss(domain_offset)
+    def forward(self, domain_offsets, **kwargs):
+        return self.mult * torch.sum(torch.cat([domain_norm_loss(offset) for offset in domain_offsets], dim=1))
 
 
 class CLIPResonstructionLoss(BaseLoss):
