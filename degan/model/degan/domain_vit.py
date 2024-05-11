@@ -54,6 +54,29 @@ class MLPBlock(MLP):
         )
 
 
+class DomainHead(nn.Module):
+    def __init__(self, hidden_dim: int, domain_dims: List[int]):
+        super().__init__()
+        
+        heads = []
+        for dim in domain_dims:
+            head = nn.Sequential(
+                nn.Linear(hidden_dim, hidden_dim),
+                nn.LayerNorm(hidden_dim),
+                nn.GELU(),
+                nn.Linear(hidden_dim, hidden_dim),
+                nn.LayerNorm(hidden_dim),
+                nn.GELU(),
+                nn.Linear(hidden_dim, dim),
+                nn.Tanh()
+            )
+            heads.append(head)
+        self.heads = nn.ModuleList(heads)
+
+    def forward(self, x):
+        return [head(x) for head in self.heads]
+
+
 class EncoderBlock(nn.Module):
     """Transformer encoder block."""
 
@@ -62,7 +85,7 @@ class EncoderBlock(nn.Module):
         num_heads: int,
         hidden_dim: int,
         mlp_dim: int,
-        domain_dim: Optional[int],
+        domain_dims: Optional[List[int]],
         dropout: float,
         attention_dropout: float,
         norm_layer: Callable[..., torch.nn.Module] = partial(nn.LayerNorm, eps=1e-6),
@@ -79,17 +102,9 @@ class EncoderBlock(nn.Module):
         self.ln_2 = norm_layer(hidden_dim)
         self.mlp = MLPBlock(hidden_dim, mlp_dim, dropout)
 
-        self.domain_dim = domain_dim
-        if domain_dim is not None:
-            self.domain_proj = nn.Sequential(
-                nn.Linear(hidden_dim, hidden_dim),
-                nn.LayerNorm(hidden_dim),
-                nn.GELU(),
-                nn.Linear(hidden_dim, hidden_dim),
-                nn.LayerNorm(hidden_dim),
-                nn.GELU(),
-                nn.Linear(hidden_dim, domain_dim)
-            )
+        self.domain_dims = domain_dims
+        if domain_dims is not None:
+            self.domain_proj = DomainHead(hidden_dim, domain_dims)
 
     def forward(self, input: torch.Tensor):
         """
@@ -106,13 +121,13 @@ class EncoderBlock(nn.Module):
         
         output = x + y
 
-        if self.domain_dim is None:
+        if self.domain_dims is None:
             return output, None
         
         cls_token = output[:, 0]
         domain_pred = self.domain_proj(cls_token)
 
-        return output, torch.chunk(domain_pred, 2, dim=1)
+        return output, domain_pred
 
 
 class Encoder(nn.Module):
@@ -125,7 +140,7 @@ class Encoder(nn.Module):
         num_heads: int,
         hidden_dim: int,
         mlp_dim: int,
-        domain_dims: List[int],
+        domain_dims_per_resolution: List[List[int]],
         dropout: float,
         attention_dropout: float,
         norm_layer: Callable[..., torch.nn.Module] = partial(nn.LayerNorm, eps=1e-6),
@@ -133,18 +148,20 @@ class Encoder(nn.Module):
         super().__init__()
         # Note that batch_size is on the first dim because
         # we have batch_first=True in nn.MultiAttention() by default
-        assert num_layers >= len(domain_dims), "Number of layers should be not less than number of domain heads"
+        assert num_layers >= len(domain_dims_per_resolution), "Number of layers should be not less than number of domain heads"
         self.pos_embedding = nn.Parameter(torch.empty(1, seq_length, hidden_dim).normal_(std=0.02))  # from BERT
         self.dropout = nn.Dropout(dropout)
         layers: OrderedDict[str, nn.Module] = OrderedDict()
         for i in range(num_layers):
+            domain_dims = None
             # Only last layers have a domain head
-            domain_dim = domain_dims[i - num_layers + len(domain_dims)] if i >= num_layers - len(domain_dims) else None
+            if i >= num_layers - len(domain_dims_per_resolution):
+                domain_dims = domain_dims_per_resolution[i - num_layers + len(domain_dims_per_resolution)]
             layers[f"encoder_layer_{i}"] = EncoderBlock(
                 num_heads,
                 hidden_dim,
                 mlp_dim,
-                domain_dim,
+                domain_dims,
                 dropout,
                 attention_dropout,
                 norm_layer,
@@ -173,7 +190,7 @@ class DomainTransformer(nn.Module):
         num_heads: int,
         hidden_dim: int,
         mlp_dim: int,
-        domain_dims: List[int],
+        domain_dims_per_resolution: List[List[int]],
         dropout: float = 0.0,
         attention_dropout: float = 0.0,
         norm_layer: Callable[..., torch.nn.Module] = partial(nn.LayerNorm, eps=1e-6),
@@ -227,7 +244,7 @@ class DomainTransformer(nn.Module):
             num_heads,
             hidden_dim,
             mlp_dim,
-            domain_dims,
+            domain_dims_per_resolution,
             dropout,
             attention_dropout,
             norm_layer,

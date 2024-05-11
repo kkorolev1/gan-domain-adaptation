@@ -27,7 +27,17 @@ class ViTEnum(Enum):
 
 
 class DomainEncoder(BaseModel):
-    domain_dims = [1024, 1024, 1024, 1024, 1024, 512, 256, 128, 64]
+    domain_dims_per_resolution = [
+        [512, 512],
+        [512, 512, 512],
+        [512, 512, 512],
+        [512, 512, 512],
+        [512, 512, 512],
+        [512, 256, 256],
+        [256, 128, 128],
+        [128, 64, 64],
+        [64, 32, 32]
+    ]
 
     def __init__(self, vit_spec=ViTEnum.DEFAULT, freeze_transformer=True):
         super().__init__()
@@ -36,7 +46,7 @@ class DomainEncoder(BaseModel):
 
         self.transformer = DomainTransformer(
             **vit_spec.value.model_kwargs,
-            domain_dims=DomainEncoder.domain_dims
+            domain_dims_per_resolution=DomainEncoder.domain_dims_per_resolution
         )
 
         self._load_transformer_weights(self.transformer, freeze_transformer)
