@@ -54,7 +54,7 @@ class MLPBlock(MLP):
         )
 
 
-class DomainHead(nn.Module):
+class DomainProjector(nn.Module):
     def __init__(self, hidden_dim: int, domain_dims: List[int]):
         super().__init__()
         
@@ -67,8 +67,7 @@ class DomainHead(nn.Module):
                 nn.Linear(hidden_dim, hidden_dim),
                 nn.LayerNorm(hidden_dim),
                 nn.GELU(),
-                nn.Linear(hidden_dim, dim),
-                nn.Tanh()
+                nn.Linear(hidden_dim, dim)
             )
             heads.append(head)
         self.heads = nn.ModuleList(heads)
@@ -104,7 +103,7 @@ class EncoderBlock(nn.Module):
 
         self.domain_dims = domain_dims
         if domain_dims is not None:
-            self.domain_proj = DomainHead(hidden_dim, domain_dims)
+            self.domain_proj = DomainProjector(hidden_dim, domain_dims)
 
     def forward(self, input: torch.Tensor):
         """

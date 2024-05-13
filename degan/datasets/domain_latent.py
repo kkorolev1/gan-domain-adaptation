@@ -4,12 +4,13 @@ from pathlib import Path
 from glob import glob
 from PIL import Image
 from random import shuffle, seed
+from itertools import chain
 
 
 class DomainLatentDataset(torch.utils.data.Dataset):
     SEED = 1000
 
-    def __init__(self, root_path, limit=None, domain_limit=None, latent_limit=None, transform=None, sample_latent=False):
+    def __init__(self, root_path, limit=None, domain_limit=None, latent_limit=None, transform=None, sample_latent=False, batch_expand_mult=1):
         super().__init__()
         assert os.path.exists(root_path), "Root path to dataset doesn't exist"
 
@@ -30,6 +31,7 @@ class DomainLatentDataset(torch.utils.data.Dataset):
         self.paths = self._truncate_paths(paths, limit)
         self.transform = transform
         self.sample_latent = sample_latent
+        self.batch_expand_mult = batch_expand_mult
     
     def _create_path_mapping(self, domain_path, latent_path, sample_latent=False):
         mapping = {
@@ -71,13 +73,14 @@ class DomainLatentDataset(torch.utils.data.Dataset):
     def get_collate(self):
         def collate_fn(batch):
             batch_dict = {
-                "domain_img": torch.cat([x["domain_img"].unsqueeze(0) for x in batch], dim=0),
-                "inversion_img": torch.cat([x["inversion_img"].unsqueeze(0) for x in batch], dim=0),
-                "domain_path": [x["domain_path"] for x in batch]
+                "domain_img": torch.cat([x["domain_img"].repeat(self.batch_expand_mult, 1, 1, 1) for x in batch], dim=0),
+                "inversion_img": torch.cat([x["inversion_img"].repeat(self.batch_expand_mult, 1, 1, 1) for x in batch], dim=0),
+                "domain_path": list(chain(*[[x["domain_path"]] * self.batch_expand_mult for x in batch])),
+                "batch_expand_mult": self.batch_expand_mult
             }
             if self.sample_latent:
-                batch_dict["latent"] = torch.randn(len(batch), 512)
+                batch_dict["latent"] = torch.randn(len(batch) * self.batch_expand_mult, 512)
             else:
-                batch_dict["latent"] = torch.cat([x["latent"].unsqueeze(0) for x in batch], dim=0)
+                batch_dict["latent"] = torch.cat([x["latent"].repeat(self.batch_expand_mult, 1) for x in batch], dim=0)
             return batch_dict
         return collate_fn

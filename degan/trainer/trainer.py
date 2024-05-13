@@ -108,6 +108,8 @@ class Trainer:
         self.use_ema = ema is not None
         self.ema = ema
 
+        self.mean_emb = torch.load("datasets/mean_clip_emb.pt", map_location="cpu").to(device)
+
         if config.resume is not None:
             self._resume_checkpoint(config.resume)
 
@@ -308,7 +310,7 @@ class Trainer:
                 self.writer.add_scalar(
                     "learning rate", self.lr_scheduler_encoder.get_last_lr()[0]
                 )
-                if batch_idx % (self.len_epoch // 4) == 0:
+                if batch_idx % 100 == 0:
                     self._log_predictions(**batch)
                 self._log_scalars(self.train_metrics)
                 # we don't want to reset train metrics at the start of every epoch
@@ -344,7 +346,7 @@ class Trainer:
         batch["gen_emb"] = self.clip_encoder.encode_img(batch["gen_img"])
         batch["src_emb"] = self.clip_encoder.encode_img(batch["src_img"])
         batch["domain_emb"] = self.clip_encoder.encode_img(batch["domain_img"])
-        batch["src_emb_proj"] = self.clip_encoder.encode_img(batch["inversion_img"])
+        batch["src_emb_proj"] = self.mean_emb #self.clip_encoder.encode_img(batch["inversion_img"])
 
         loss_dict = self.criterion(**batch)
         for key, loss_value in loss_dict.items():

@@ -3,10 +3,16 @@ from torch import nn
 import torch.nn.functional as F
 from torchvision.models import vgg16, VGG16_Weights
 
-from degan.utils import requires_grad
+from degan.utils import requires_grad, get_tril_mask
 from degan.loss.base import BaseLoss
-from degan.loss.utils import *
 
+
+def cosine_loss(x, y):
+    """
+        x: (B, D)
+        y: (B, D)
+    """
+    return (1 - F.cosine_similarity(x, y, dim=1)).mean()
 
 
 class DirectionLoss(BaseLoss):
@@ -14,7 +20,13 @@ class DirectionLoss(BaseLoss):
         super().__init__(*args, **kwargs)
     
     def forward(self, gen_emb, src_emb, domain_emb, src_emb_proj, **kwargs):
-        return self.mult * direction_loss(gen_emb, src_emb, domain_emb, src_emb_proj)
+        """
+            gen_emb: (B, D)
+            src_emb: (B, D)
+            domain_emb: (B, D)
+            src_emb_proj: (B, D)
+        """
+        return self.mult * cosine_loss(gen_emb - src_emb, domain_emb - src_emb_proj)
 
 
 class TTDirectionLoss(BaseLoss):
@@ -22,15 +34,35 @@ class TTDirectionLoss(BaseLoss):
         super().__init__(*args, **kwargs)
     
     def forward(self, gen_emb, domain_emb, **kwargs):
-        return self.mult * tt_direction_loss(gen_emb, domain_emb)
+        """
+            gen_emb: (B, D)
+            domain_emb: (B, D)
+        """
+        if gen_emb.shape[0] == 1:
+            return torch.zeros_like(gen_emb).mean()
+        mask = get_tril_mask(gen_emb.shape[0])
+        gen_delta = (gen_emb[None, :, :] - gen_emb[:, None, :])[mask]
+        domain_delta = (domain_emb[None, :, :] - domain_emb[:, None, :])[mask]
+        return self.mult * cosine_loss(gen_delta, domain_delta)
 
 
-class DomainNormLoss(BaseLoss):
+class InDomainAngleLoss(BaseLoss):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
     
-    def forward(self, domain_offsets, **kwargs):
-        return self.mult * torch.sum(torch.cat([domain_norm_loss(offset) for offset in domain_offsets], dim=1))
+    def forward(self, gen_emb, src_emb, batch_expand_mult, **kwargs):
+        """
+            gen_emb: (B, D)
+            src_emb: (B, D)
+        """
+        if batch_expand_mult == 1:
+            return torch.zeros_like(gen_emb).mean()
+    
+        mask = torch.block_diag(*[get_tril_mask(batch_expand_mult) for _ in range(gen_emb.shape[0] // batch_expand_mult)])
+        gen_gram = (gen_emb @ gen_emb.T)[mask]
+        src_gram = (src_emb @ src_emb.T)[mask]
+
+        return self.mult * F.mse_loss(gen_gram, src_gram)
 
 
 class CLIPResonstructionLoss(BaseLoss):
@@ -38,7 +70,12 @@ class CLIPResonstructionLoss(BaseLoss):
         super().__init__(*args, **kwargs)
     
     def forward(self, gen_emb, domain_emb, **kwargs):
-        return self.mult * clip_reconstruction_loss(gen_emb, domain_emb)
+        """
+            gen_emb: (B, D)
+            domain_emb: (B, D)
+        """
+        return self.mult * cosine_loss(gen_emb, domain_emb)
+
 
 class L2ResonstructionLoss(BaseLoss):
     def __init__(self, *args, **kwargs):
@@ -47,10 +84,11 @@ class L2ResonstructionLoss(BaseLoss):
     def forward(self, gen_img, domain_img, **kwargs):
         return self.mult * F.mse_loss(gen_img, domain_img)
 
+
 class VGGPerceptualLoss(BaseLoss):
     default_features_pos = [0, 4, 9, 16, 23]
 
-    def __init__(self, name, mult, resize=True, features_pos=None):
+    def __init__(self, name, mult, source="src_img", target="gen_img", resize=True, features_pos=None):
         super().__init__(name, mult)
 
         if features_pos is None:
@@ -66,19 +104,23 @@ class VGGPerceptualLoss(BaseLoss):
 
         self.models = nn.ModuleList(models)
         self.transform = F.interpolate
+        self.source = source
+        self.target = target
         self.resize = resize
         self.register_buffer("mean", torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1).cuda())
         self.register_buffer("std", torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1).cuda())
 
-    def forward(self, gen_img, domain_img, feature_layers=(0, 1, 2, 3), style_layers=tuple(), **kwargs):
-        gen_img = (gen_img - self.mean) / self.std
-        domain_img = (domain_img - self.mean) / self.std
+    def forward(self, feature_layers=(0, 1, 2, 3), style_layers=tuple(), **kwargs):
+        source = kwargs[self.source]
+        target = kwargs[self.target]
+        source = (source - self.mean) / self.std
+        target = (target - self.mean) / self.std
         if self.resize:
-            gen_img = self.transform(gen_img, mode='bilinear', size=(224, 224), align_corners=False)
-            domain_img = self.transform(domain_img, mode='bilinear', size=(224, 224), align_corners=False)
+            source = self.transform(source, mode='bilinear', size=(224, 224), align_corners=False)
+            target = self.transform(target, mode='bilinear', size=(224, 224), align_corners=False)
         loss = 0.0
-        x = gen_img
-        y = domain_img
+        x = source
+        y = target
         for i, model in enumerate(self.models):
             x = model(x)
             y = model(y)

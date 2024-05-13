@@ -4,8 +4,9 @@ defaults:
 name: "train"
 gpus: [0]
 
-batch_size: 1
-len_epoch: 1000
+batch_size: 4
+batch_expand_mult: 4
+len_epoch: 500
 
 optimizer_encoder:
   _target_: torch.optim.Adam
@@ -36,6 +37,9 @@ loss:
     - _target_: degan.loss.TTDirectionLoss
       name: loss_tt_direction
       mult: 1
+    - _target_: degan.loss.InDomainAngleLoss
+      name: loss_indomain_angle
+      mult: 1
 
 transform:
   _target_: torchvision.transforms.v2.Compose
@@ -58,9 +62,10 @@ data:
     datasets:
       - _target_: degan.datasets.DomainLatentDataset
         root_path: datasets/train
-        domain_limit: 1
+        domain_limit: 4
         transform: ${transform}
         sample_latent: True
+        batch_expand_mult: ${batch_expand_mult}
   val:
     batch_size: ${batch_size}
     num_workers: 5
@@ -68,7 +73,7 @@ data:
       - _target_: degan.datasets.DomainLatentDataset
         root_path: datasets/train
         transform: ${transform}
-        domain_limit: 1
+        domain_limit: 4
         latent_limit: 10
         sample_latent: False
   # val_ema:
@@ -92,6 +97,6 @@ trainer:
   wandb_run_name: "one_batch_test"
   len_epoch: ${len_epoch}
   grad_norm_clip: 100
-  grad_accumulation_steps: 2
+  grad_accumulation_steps: 1
 
 wandb_key: 91898ab676432e8d5689a2ce4a88f7131dc1e45c

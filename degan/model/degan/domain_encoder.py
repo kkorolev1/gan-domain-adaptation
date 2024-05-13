@@ -78,6 +78,7 @@ class DomainEncoder(BaseModel):
 
     def forward(self, img):
         """
-        img: (B, C, 1024, 1024)
+            img: (B, C, 1024, 1024)
         """
-        return self.transformer(self.transform(img))
+        img = self.transform(img)
+        return self.transformer(img)
