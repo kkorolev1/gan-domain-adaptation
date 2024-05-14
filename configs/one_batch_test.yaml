@@ -2,11 +2,12 @@ defaults:
   - models
 
 name: "train"
-gpus: [0]
+gpus: [1]
 
-batch_size: 4
+batch_size: 8
 batch_expand_mult: 4
-len_epoch: 500
+len_epoch: 200
+mean_emb_path: datasets/mean_clip_emb.pt
 
 optimizer_encoder:
   _target_: torch.optim.Adam
@@ -39,7 +40,7 @@ loss:
       mult: 1
     - _target_: degan.loss.InDomainAngleLoss
       name: loss_indomain_angle
-      mult: 1
+      mult: 15
 
 transform:
   _target_: torchvision.transforms.v2.Compose
@@ -58,24 +59,24 @@ transform:
 data:
   train:
     batch_size: ${batch_size}
-    num_workers: 5
+    num_workers: 8
     datasets:
       - _target_: degan.datasets.DomainLatentDataset
         root_path: datasets/train
-        domain_limit: 4
+        domain_limit: 10000
         transform: ${transform}
         sample_latent: True
         batch_expand_mult: ${batch_expand_mult}
+        mean_emb_path: null
   val:
     batch_size: ${batch_size}
-    num_workers: 5
+    num_workers: 8
     datasets:
       - _target_: degan.datasets.DomainLatentDataset
-        root_path: datasets/train
+        root_path: datasets/val
         transform: ${transform}
-        domain_limit: 4
-        latent_limit: 10
         sample_latent: False
+        mean_emb_path: null
   # val_ema:
   #   batch_size: ${batch_size}
   #   num_workers: 5
@@ -89,14 +90,10 @@ trainer:
   epochs: 100
   save_dir: "saved/"
   save_period: 5
-  verbosity: 2
   monitor: "max val_MeanSemanticScore"
   early_stop: 100
-  visualize: "wandb"
   wandb_project: "degan_project"
-  wandb_run_name: "one_batch_test"
+  wandb_run_name: "indomain_large_mult_proj_emb"
   len_epoch: ${len_epoch}
   grad_norm_clip: 100
   grad_accumulation_steps: 1
-
-wandb_key: 91898ab676432e8d5689a2ce4a88f7131dc1e45c

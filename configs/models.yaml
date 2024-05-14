@@ -1,11 +1,17 @@
 defaults:
   - params
 
+pretrained:
+  generator: pretrained/stylegan2-ffhq-config-f.pt
+  e4e: pretrained/e4e_ffhq_encode.pt
+  blendgan: pretrained/blendgan.pt
+
 generator:
   _target_: degan.model.Generator
   size: ${img_size}
   style_dim: ${style_dim}
   n_mlp: 8
+  checkpoint_path: ${pretrained.generator}
 
 domain_encoder:
   _target_: degan.model.DomainEncoder
@@ -14,8 +20,3 @@ domain_encoder:
 clip_encoder:
   _target_: degan.model.CLIP
   model_name: ViT-B/16
-
-pretrained:
-  generator: pretrained/stylegan2-ffhq-config-f.pt
-  e4e: pretrained/e4e_ffhq_encode.pt
-  blendgan: pretrained/blendgan.pt

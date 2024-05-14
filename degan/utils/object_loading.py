@@ -4,13 +4,10 @@ from torch.utils.data import ConcatDataset, DataLoader
 
 from hydra.utils import instantiate
 
-import degan.datasets
-from degan.utils.parse_config import ConfigParser
 
-
-def get_dataloaders(configs: ConfigParser):
+def get_dataloaders(config):
     dataloaders = {}
-    for split, params in configs["data"].items():
+    for split, params in config["data"].items():
         num_workers = params.get("num_workers", 1)
 
         if split == 'train':

@@ -2,6 +2,7 @@ import json
 from collections import OrderedDict
 from itertools import repeat
 from pathlib import Path
+from datetime import datetime
 
 import pandas as pd
 import torch
@@ -116,9 +117,22 @@ def nan_hook(self, inp, output):
             print("In", self.__class__.__name__)
             raise RuntimeError(f"Found NAN in output {i} at indices: ", nan_mask.nonzero(), "where:", out[nan_mask.nonzero()[:, 0].unique(sorted=True)])
 
+def setup_checkpoint_dir(config, run_id=None):
+    save_dir = Path(config["trainer"]["save_dir"])
+    
+    exper_name = config["name"]
+    if run_id is None:  # use timestamp as default run-id
+        run_id = datetime.now().strftime(r"%m%d_%H%M%S")
+    checkpoint_dir = save_dir / "models" / exper_name / run_id
+
+    # make directory for saving checkpoints and log.
+    exist_ok = run_id == ""
+    checkpoint_dir.mkdir(parents=True, exist_ok=exist_ok)
+
+    return checkpoint_dir
+
 class MetricTracker:
-    def __init__(self, *keys, writer=None):
-        self.writer = writer
+    def __init__(self, *keys):
         self._data = pd.DataFrame(
             index=keys, columns=["total", "counts", "average"])
         self.reset()
@@ -128,8 +142,6 @@ class MetricTracker:
             self._data[col].values[:] = 0
 
     def update(self, key, value, n=1):
-        # if self.writer is not None:
-        #     self.writer.add_scalar(key, value)
         self._data.loc[key, "total"] += value * n
         self._data.loc[key, "counts"] += n
         self._data.loc[key, "average"] = self._data.loc[key, "total"] / self._data.loc[key, "counts"]

@@ -19,14 +19,14 @@ class DirectionLoss(BaseLoss):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
     
-    def forward(self, gen_emb, src_emb, domain_emb, src_emb_proj, **kwargs):
+    def forward(self, gen_emb, src_emb, domain_emb, src_proj_emb, **kwargs):
         """
             gen_emb: (B, D)
             src_emb: (B, D)
             domain_emb: (B, D)
-            src_emb_proj: (B, D)
+            src_proj_emb: (B, D)
         """
-        return self.mult * cosine_loss(gen_emb - src_emb, domain_emb - src_emb_proj)
+        return self.mult * cosine_loss(gen_emb - src_emb, domain_emb - src_proj_emb)
 
 
 class TTDirectionLoss(BaseLoss):

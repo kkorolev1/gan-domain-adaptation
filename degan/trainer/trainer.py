@@ -1,22 +1,18 @@
-import random
-from pathlib import Path
+import logging
 from random import shuffle
 import itertools
-from glob import glob
 from collections import defaultdict
 
 from numpy import inf
-import pandas as pd
 import torch
-import torch.nn.functional as F
 from torch.nn.utils import clip_grad_norm_
 from tqdm import tqdm
 import os
 from torchvision.transforms import v2
 from torchvision.utils import make_grid
 
-from degan.utils import inf_loop, MetricTracker, ten2img
-from degan.logger import get_visualizer
+from degan.utils import inf_loop, MetricTracker, setup_checkpoint_dir
+from degan.logger import WanDBWriter
 
 class Trainer:
     """
@@ -24,37 +20,38 @@ class Trainer:
     """
 
     def __init__(
-            self,
-            generator,
-            domain_encoder,
-            clip_encoder,
-            criterion,
-            metrics,
-            optimizer_encoder,
-            lr_scheduler_encoder,
-            config,
-            device,
-            dataloaders,
-            ema=None,
-            len_epoch=None,
-            skip_oom=True
+        self,
+        generator,
+        domain_encoder,
+        clip_encoder,
+        criterion,
+        metrics,
+        optimizer_encoder,
+        lr_scheduler_encoder,
+        config,
+        device,
+        dataloaders,
+        ema=None,
+        len_epoch=None,
+        skip_oom=True,
     ):
-        self.generator = generator
-        self.domain_encoder = domain_encoder
-        self.clip_encoder = clip_encoder
-
-        self.device = device
+        # Setup variables
         self.config = config
-        self.logger = config.get_logger("trainer", config["trainer"]["verbosity"])
-
-        self.criterion = criterion
-        self.metrics = metrics
-        self.optimizer_encoder = optimizer_encoder
-        self.lr_scheduler_encoder = lr_scheduler_encoder
-
+        self.logger = logging.getLogger("trainer")
+        self.device = device
+        self.checkpoint_dir = setup_checkpoint_dir(config)
+        self.skip_oom = skip_oom
+        self.start_epoch = 1
         # for interrupt saving
         self._last_epoch = 0
+        self.log_step = 50
+    
+        # Models
+        self.generator = generator
+        self.clip_encoder = clip_encoder
+        self.domain_encoder = domain_encoder
 
+        # Trainer config
         cfg_trainer = config["trainer"]
         self.epochs = cfg_trainer["epochs"]
         self.save_period = cfg_trainer["save_period"]
@@ -62,7 +59,7 @@ class Trainer:
         self.reset_optimizer = cfg_trainer.get("reset_optimizer", False)
         self.reset_scheduler = cfg_trainer.get("reset_scheduler", False)
 
-        # configuration to monitor model performance and save best
+        # Setup monitoring
         if self.monitor == "off":
             self.mnt_mode = "off"
             self.mnt_best = 0
@@ -75,17 +72,25 @@ class Trainer:
             if self.early_stop <= 0:
                 self.early_stop = inf
 
-        self.start_epoch = 1
-
-        self.checkpoint_dir = config.save_dir
-
-        # setup visualization writer instance
-        self.writer = get_visualizer(
-            config, self.logger, cfg_trainer["visualize"]
+        # Criterion and metrics
+        self.criterion = criterion
+        self.metrics = metrics
+        self.train_metrics = MetricTracker(
+            "loss", "grad norm", *self.criterion.loss_names,
+            *[m.name for m in self.metrics if m.iter_based]
+        )
+        self.evaluation_metrics = MetricTracker(
+            "loss", *self.criterion.loss_names,
+            *[m.name for m in self.metrics]
         )
 
-        self.skip_oom = skip_oom
+        # Optimizers
+        self.optimizer_encoder = optimizer_encoder
+        self.lr_scheduler_encoder = lr_scheduler_encoder
+
+        # Dataloaders
         self.train_dataloader = dataloaders["train"]
+        self.evaluation_dataloaders = {k: v for k, v in dataloaders.items() if k != "train"}
         if len_epoch is None:
             # epoch-based training
             self.len_epoch = len(self.train_dataloader)
@@ -93,25 +98,15 @@ class Trainer:
             # iteration-based training
             self.train_dataloader = inf_loop(self.train_dataloader)
             self.len_epoch = len_epoch
-        self.evaluation_dataloaders = {k: v for k, v in dataloaders.items() if k != "train"}
-        self.log_step = 50
-
-        self.train_metrics = MetricTracker(
-            "loss", "grad norm", *self.criterion.loss_names,
-            *[m.name for m in self.metrics if m.iter_based], writer=self.writer
-        )
-        self.evaluation_metrics = MetricTracker(
-            "loss", *self.criterion.loss_names,
-            *[m.name for m in self.metrics], writer=self.writer
-        )
-    
+        
+        # EMA
         self.use_ema = ema is not None
         self.ema = ema
 
-        self.mean_emb = torch.load("datasets/mean_clip_emb.pt", map_location="cpu").to(device)
+        self.writer = WanDBWriter(self.config)
 
-        if config.resume is not None:
-            self._resume_checkpoint(config.resume)
+        if config.get("resume"):
+            self._resume_checkpoint(config.get("resume"))
 
     def train(self):
         try:
@@ -255,7 +250,7 @@ class Trainer:
         """
         Move all necessary tensors to the HPU
         """
-        for tensor_for_gpu in ["domain_img", "inversion_img", "latent"]:
+        for tensor_for_gpu in ["domain_img", "domain_emb", "src_proj_emb", "latent"]:
             batch[tensor_for_gpu] = batch[tensor_for_gpu].to(device)
         return batch
 
@@ -264,7 +259,7 @@ class Trainer:
             clip_grad_norm_(
                 model.parameters(), self.config["trainer"]["grad_norm_clip"]
             )
-    
+
     def _train_epoch(self, epoch):
         """
         Training logic for an epoch
@@ -283,6 +278,8 @@ class Trainer:
         for batch_idx, batch in enumerate(
                 tqdm(self.train_dataloader, desc="train", total=self.len_epoch)
         ):
+            if batch_idx >= self.len_epoch:
+                break
             try:
                 batch = self.process_batch(
                     batch,
@@ -317,8 +314,6 @@ class Trainer:
                 # because we are interested in recent train metrics
                 last_train_metrics = self.train_metrics.result()
                 self.train_metrics.reset()
-            if batch_idx + 1 >= self.len_epoch:
-                break
         log = last_train_metrics
 
         for part, dataloader in self.evaluation_dataloaders.items():
@@ -337,7 +332,7 @@ class Trainer:
             domain_encoder = self.ema
 
         batch["domain_offsets"] = domain_encoder(batch["domain_img"])
-        
+
         s_codes = self.generator.get_s_code([batch["latent"]], input_is_latent=False)
         s_codes_shifted = self.generator.add_in_style_space(s_codes, batch["domain_offsets"])
         batch["gen_img"] = self.generator(s_codes_shifted, is_s_code=True)[0]
@@ -345,8 +340,6 @@ class Trainer:
 
         batch["gen_emb"] = self.clip_encoder.encode_img(batch["gen_img"])
         batch["src_emb"] = self.clip_encoder.encode_img(batch["src_img"])
-        batch["domain_emb"] = self.clip_encoder.encode_img(batch["domain_img"])
-        batch["src_emb_proj"] = self.mean_emb #self.clip_encoder.encode_img(batch["inversion_img"])
 
         loss_dict = self.criterion(**batch)
         for key, loss_value in loss_dict.items():
@@ -400,8 +393,6 @@ class Trainer:
         return total_norm.item()
 
     def _log_scalars(self, metric_tracker: MetricTracker):
-        if self.writer is None:
-            return
         for metric_name in metric_tracker.keys():
             self.writer.add_scalar(f"{metric_name}", metric_tracker.avg(metric_name))
 
@@ -465,9 +456,6 @@ class Trainer:
             self._log_predictions(**batch_dict)
             self._log_scalars(self.evaluation_metrics)
 
-        # add histogram of model parameters to the tensorboard
-        #for name, p in self.model.named_parameters():
-            #self.writer.add_histogram(name, p, bins="auto")
         return self.evaluation_metrics.result()
     
     def _log_predictions(
@@ -479,8 +467,6 @@ class Trainer:
             *args,
             **kwargs
     ):
-        if self.writer is None:
-            return
         domain_img = domain_img.clip(-1, 1)
         gen_img = gen_img.clip(-1, 1)
         src_img = src_img.clip(-1, 1)

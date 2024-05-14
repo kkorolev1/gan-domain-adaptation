@@ -7,27 +7,19 @@ from pathlib import Path
 
 
 class WanDBWriter:
-    def __init__(self, config, logger):
-        self.writer = None
-        self.selected_module = ""
+    def __init__(self, config):
 
-        try:
-            wandb.login(relogin=True, key=config["wandb_key"])
+        if config["trainer"].get("wandb_project") is None:
+            raise ValueError("please specify project name for wandb")
 
-            if config['trainer'].get('wandb_project') is None:
-                raise ValueError("please specify project name for wandb")
-
-            code_dir = Path(__file__).parent.parent.resolve().name
-            wandb.init(
-                project=config['trainer'].get('wandb_project'),
-                name=config['trainer'].get('wandb_run_name'),
-                config=config.config,
-                settings=wandb.Settings(code_dir=code_dir)
-            )
-            self.wandb = wandb
-
-        except ImportError:
-            logger.warning("For use wandb install it via \n\t pip install wandb")
+        code_dir = Path(__file__).parent.parent.resolve().name
+        wandb.init(
+            project=config["trainer"].get("wandb_project"),
+            name=config['trainer'].get("wandb_run_name"),
+            config=config,
+            settings=wandb.Settings(code_dir=code_dir)
+        )
+        self.wandb = wandb
 
         self.step = 0
         self.mode = ""
@@ -67,29 +59,6 @@ class WanDBWriter:
             self._scalar_name(scalar_name): self.wandb.Html(text)
         }, step=self.step)
 
-    def add_histogram(self, scalar_name, hist, bins=None):
-        hist = hist.detach().cpu().numpy()
-        np_hist = np.histogram(hist, bins=bins)
-        if np_hist[0].shape[0] > 512:
-            np_hist = np.histogram(hist, bins=512)
-
-        hist = self.wandb.Histogram(
-            np_histogram=np_hist
-        )
-
-        self.wandb.log({
-            self._scalar_name(scalar_name): hist
-        }, step=self.step)
-
     def add_table(self, table_name, table: pd.DataFrame):
-        self.wandb.log({self._scalar_name(table_name): wandb.Table(dataframe=table)},
+        self.wandb.log({self._scalar_name(table_name): self.wandb.Table(dataframe=table)},
                        step=self.step)
-
-    def add_images(self, scalar_name, images):
-        raise NotImplementedError()
-
-    def add_pr_curve(self, scalar_name, scalar):
-        raise NotImplementedError()
-
-    def add_embedding(self, scalar_name, scalar):
-        raise NotImplementedError()

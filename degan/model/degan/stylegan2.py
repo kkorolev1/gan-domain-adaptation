@@ -373,6 +373,7 @@ class Generator(BaseModel):
         channel_multiplier=2,
         blur_kernel=[1, 3, 3, 1],
         lr_mlp=0.01,
+        checkpoint_path=None
     ):
         super().__init__()
 
@@ -449,6 +450,9 @@ class Generator(BaseModel):
             in_channel = out_channel
 
         self.n_latent = self.log_size * 2 - 2
+
+        if checkpoint_path is not None:
+            self.load_state_dict(torch.load(checkpoint_path)["g_ema"])
 
     def make_noise(self):
         device = self.input.input.device

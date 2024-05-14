@@ -1,2 +1,1 @@
-from .logger import *
-from .visualization import *
+from degan.logger.wandb import WanDBWriter
