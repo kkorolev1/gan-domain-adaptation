@@ -8,7 +8,7 @@ from itertools import chain
 
 
 class DomainLatentDataset(torch.utils.data.Dataset):
-    SEED = 1000
+    SEED = 3000
 
     def __init__(self, root_path, limit=None, domain_limit=None, latent_limit=None, transform=None, sample_latent=False, batch_expand_mult=1, mean_emb_path=None):
         super().__init__()

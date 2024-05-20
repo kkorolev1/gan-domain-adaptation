@@ -7,11 +7,10 @@ from numpy import inf
 import torch
 from torch.nn.utils import clip_grad_norm_
 from tqdm import tqdm
-import os
 from torchvision.transforms import v2
 from torchvision.utils import make_grid
 
-from degan.utils import inf_loop, MetricTracker, setup_checkpoint_dir
+from degan.utils import inf_loop, MetricTracker, setup_checkpoint_dir, FadeInScheduler
 from degan.logger import WanDBWriter
 
 class Trainer:
@@ -102,6 +101,8 @@ class Trainer:
         # EMA
         self.use_ema = ema is not None
         self.ema = ema
+
+        self.fade_in_scheduler = FadeInScheduler(**self.config["fade_in_scheduler"])
 
         self.writer = WanDBWriter(self.config)
 
@@ -223,6 +224,7 @@ class Trainer:
         self.start_epoch = checkpoint["epoch"] + 1
         self.mnt_best = checkpoint["monitor_best"]
 
+        self.fade_in_scheduler.step = self.start_epoch * self.len_epoch
         self.domain_encoder.load_state_dict(checkpoint["state_dict_encoder"])
 
         if not self.reset_optimizer:
@@ -307,6 +309,9 @@ class Trainer:
                 self.writer.add_scalar(
                     "learning rate", self.lr_scheduler_encoder.get_last_lr()[0]
                 )
+                self.writer.add_scalar(
+                    "offset mult", self.fade_in_scheduler.item()
+                )
                 if batch_idx % 100 == 0:
                     self._log_predictions(**batch)
                 self._log_scalars(self.train_metrics)
@@ -334,7 +339,7 @@ class Trainer:
         batch["domain_offsets"] = domain_encoder(batch["domain_img"])
 
         s_codes = self.generator.get_s_code([batch["latent"]], input_is_latent=False)
-        s_codes_shifted = self.generator.add_in_style_space(s_codes, batch["domain_offsets"])
+        s_codes_shifted = self.generator.add_in_style_space(s_codes, batch["domain_offsets"], self.fade_in_scheduler.item())
         batch["gen_img"] = self.generator(s_codes_shifted, is_s_code=True)[0]
         batch["src_img"] = self.generator(s_codes, is_s_code=True)[0]
 
@@ -355,6 +360,7 @@ class Trainer:
                 metrics.update("grad norm", self.get_grad_norm(self.domain_encoder))
                 if self.use_ema:
                     self.ema.update()
+                self.fade_in_scheduler.update()
                 self.optimizer_encoder.zero_grad()
         
         batch.update(loss_dict)

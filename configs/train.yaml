@@ -2,19 +2,20 @@ defaults:
   - models
 
 name: "train"
-gpus: [0]
+gpus: [1]
 
 batch_size: 8
 batch_expand_mult: 4
 len_epoch: 200
+mean_emb_path: datasets/mean_clip_emb.pt
 
 optimizer_encoder:
   _target_: torch.optim.Adam
-  lr: 1e-4
+  lr: 1e-3
 
 lr_scheduler_encoder:
   _target_: torch.optim.lr_scheduler.ExponentialLR
-  gamma: 1
+  gamma: 0.9999
 
 # ema:
 #   _target_: ema_pytorch.EMA
@@ -39,7 +40,7 @@ loss:
       mult: 1
     - _target_: degan.loss.InDomainAngleLoss
       name: loss_indomain_angle
-      mult: 15
+      mult: 12
 
 transform:
   _target_: torchvision.transforms.v2.Compose
@@ -62,10 +63,10 @@ data:
     datasets:
       - _target_: degan.datasets.DomainLatentDataset
         root_path: datasets/train
-        domain_limit: 10000
         transform: ${transform}
         sample_latent: True
         batch_expand_mult: ${batch_expand_mult}
+        mean_emb_path: ${mean_emb_path}
   val:
     batch_size: ${batch_size}
     num_workers: 8
@@ -74,6 +75,7 @@ data:
         root_path: datasets/val
         transform: ${transform}
         sample_latent: False
+        mean_emb_path: ${mean_emb_path}
   # val_ema:
   #   batch_size: ${batch_size}
   #   num_workers: 5
@@ -83,14 +85,21 @@ data:
   #       transform: ${transform}
   #       sample_latent: False
 
+fade_in_scheduler:
+  start: 0.1
+  end: 1
+  annealing_steps: 2000
+
 trainer: 
-  epochs: 100
+  epochs: 200
   save_dir: "saved/"
   save_period: 5
   monitor: "max val_MeanSemanticScore"
   early_stop: 100
   wandb_project: "degan_project"
-  wandb_run_name: "10k domains"
+  wandb_run_name: "10k_domains_big_lr_decay_resume"
   len_epoch: ${len_epoch}
   grad_norm_clip: 100
   grad_accumulation_steps: 1
+
+resume: /home/kirillkorolev/gan-domain-adaptation/saved/models/train/0515_010641/model_best.pth

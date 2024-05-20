@@ -154,3 +154,18 @@ class MetricTracker:
 
     def keys(self):
         return self._data.total.keys()
+    
+class FadeInScheduler:
+    def __init__(self, start=0.1, end=1.0, annealing_steps=1000):
+        self.start = start
+        self.end = end
+        self.schedule = torch.linspace(start, end, annealing_steps)
+        self.step = 0
+    
+    def item(self):
+        if self.step >= len(self.schedule):
+            return self.end
+        return self.schedule[self.step]
+    
+    def update(self):
+        self.step += 1

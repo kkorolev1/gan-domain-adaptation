@@ -525,8 +525,8 @@ class Generator(BaseModel):
 
         return s_codes
 
-    def add_in_style_space(self, s_codes, offsets):
-        return [s_code + offset for s_code, offset in zip(s_codes, offsets)]
+    def add_in_style_space(self, s_codes, offsets, mult=1.0):
+        return [s_code + mult * offset for s_code, offset in zip(s_codes, offsets)]
 
     def forward(
         self,

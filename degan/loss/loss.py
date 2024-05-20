@@ -2,6 +2,7 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 from torchvision.models import vgg16, VGG16_Weights
+from functools import partial
 
 from degan.utils import requires_grad, get_tril_mask
 from degan.loss.base import BaseLoss
@@ -88,7 +89,7 @@ class L2ResonstructionLoss(BaseLoss):
 class VGGPerceptualLoss(BaseLoss):
     default_features_pos = [0, 4, 9, 16, 23]
 
-    def __init__(self, name, mult, source="src_img", target="gen_img", resize=True, features_pos=None):
+    def __init__(self, name, mult, source_key="src_img", target_key="gen_img", resize=True, features_pos=None, use_feature_layers=tuple(), use_style_layers=tuple()):
         super().__init__(name, mult)
 
         if features_pos is None:
@@ -103,30 +104,32 @@ class VGGPerceptualLoss(BaseLoss):
             models.append(model)
 
         self.models = nn.ModuleList(models)
-        self.transform = F.interpolate
-        self.source = source
-        self.target = target
+        self.transform = partial(F.interpolate, mode="bilinear", size=(224, 224), align_corners=False)
+        self.source_key = source_key
+        self.target_key = target_key
+        self.use_feature_layers = set(use_feature_layers)
+        self.use_style_layers = set(use_style_layers)
         self.resize = resize
         self.register_buffer("mean", torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1).cuda())
         self.register_buffer("std", torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1).cuda())
 
-    def forward(self, feature_layers=(0, 1, 2, 3), style_layers=tuple(), **kwargs):
-        source = kwargs[self.source]
-        target = kwargs[self.target]
+    def forward(self, **kwargs):
+        source = kwargs[self.source_key]
+        target = kwargs[self.target_key]
         source = (source - self.mean) / self.std
         target = (target - self.mean) / self.std
         if self.resize:
-            source = self.transform(source, mode='bilinear', size=(224, 224), align_corners=False)
-            target = self.transform(target, mode='bilinear', size=(224, 224), align_corners=False)
+            source = self.transform(source)
+            target = self.transform(target)
         loss = 0.0
         x = source
         y = target
         for i, model in enumerate(self.models):
             x = model(x)
             y = model(y)
-            if i in feature_layers:
+            if i in self.use_feature_layers:
                 loss += F.l1_loss(x, y)
-            if i in style_layers:
+            if i in self.use_style_layers:
                 act_x = x.reshape(x.shape[0], x.shape[1], -1)
                 act_y = y.reshape(y.shape[0], y.shape[1], -1)
                 gram_x = act_x @ act_x.permute(0, 2, 1)
@@ -146,7 +149,10 @@ class CompositeLoss(nn.Module):
 
     def forward(self, **kwargs):
         loss_dict = {}
+        loss = 0.0
         for module in self.loss_modules:
-            loss_dict[module.name] = module(**kwargs)
-        loss_dict["loss"] = torch.sum(torch.stack(list(loss_dict.values())))
+            module_loss = module(**kwargs)
+            loss = loss + module_loss
+            loss_dict[module.name] = module_loss.detach()
+        loss_dict["loss"] = loss
         return loss_dict
