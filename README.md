@@ -3,6 +3,16 @@ Faculty of Computer Science, Higher School of Economics
 
 **Scientific advisors**: Aibek Alanov, Maksim Nakhodnov
 
+## Abstract
+Modern generative adversarial networks (GANs) enable the synthesis of high-quality images
+and provide tools for fine-grained image manipulation. However, out-of-domain generation requires
+an additional fine-tuning of a generator or non-flexible latent optimization, which requires training
+for each new image. A novel encoder, which learns offsets in a S space and allows a GAN generator
+to adapt to a new domain in a single pass, is proposed and implemented. An ablation study of loss
+components and usage of projection embeddings is conducted. A method for regularization in a
+multi-domain setting is proposed. A thorough comparison with prior domain adaptation methods
+is made.
+
 <p align="center">
   <img src="https://i.ibb.co/rtcj69D/Template-00000.png" border="0" />
 </p>
